@@ -25,6 +25,9 @@
   "version": "0.0.1",
   "main": "./dist/index.js",
   "license": "MIT",
+  "repository": {
+    "url": "https://github.com/wevm/idxs"
+  },
   "files": [
     "dist",
     "src"
