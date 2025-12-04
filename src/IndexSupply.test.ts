@@ -760,6 +760,7 @@ describe('create', () => {
   describe('.live', () => {
     test('behavior: streams Transfer events from Base chain', async () => {
       const controller = new AbortController()
+      // biome-ignore lint/suspicious/noExplicitAny: _
       const results: IS.IS.fetch.ReturnValue<any, any>[] = []
 
       // Collect a few results then abort
@@ -864,6 +865,7 @@ describe('create', () => {
 
       const testIndexer = IS.create()
       const controller = new AbortController()
+      // biome-ignore lint/suspicious/noExplicitAny: _
       const results: IS.IS.fetch.ReturnValue<any, any>[] = []
 
       for await (const result of testIndexer.live({

@@ -224,6 +224,7 @@ type SplitColumns<
   columns extends string,
   acc extends string[] = [],
   current extends string = '',
+  // biome-ignore lint/suspicious/noExplicitAny: _
   depth extends any[] = [],
   quoteType extends false | '"' | "'" = false,
 > = columns extends `${infer x}${infer Rest}`
@@ -254,7 +255,8 @@ type SplitColumns<
             : SplitColumns<Rest, acc, `${current}${x}`, depth, quoteType>
           : x extends ')'
             ? quoteType extends false
-              ? depth extends [...infer restDepth extends any[], any]
+              ? // biome-ignore lint/suspicious/noExplicitAny: _
+                depth extends [...infer restDepth extends any[], any]
                 ? SplitColumns<Rest, acc, `${current}${x}`, restDepth, false>
                 : SplitColumns<Rest, acc, `${current}${x}`, [], false>
               : SplitColumns<Rest, acc, `${current}${x}`, depth, quoteType>
@@ -307,6 +309,7 @@ type ExtractColumnName<value extends string> =
  */
 type BuildAbiTypeMap<
   inputs extends readonly { name: string; type: string }[],
+  // biome-ignore lint/complexity/noBannedTypes: _
   acc extends Record<string, string> = {},
 > = inputs extends readonly [
   infer head extends { name: string; type: string },
@@ -320,6 +323,7 @@ type BuildAbiTypeMap<
  */
 type BuildTypeMapFromSignatures<
   signatures extends readonly string[],
+  // biome-ignore lint/complexity/noBannedTypes: _
   acc extends Record<string, string> = {},
 > = signatures extends readonly [infer head extends string, ...infer tail extends readonly string[]]
   ? ParseAbiItem<head> extends infer Event
@@ -394,7 +398,8 @@ type MergeColumns<
   signature extends readonly string[] | string | undefined = undefined,
 > = columns extends [infer head extends string, ...infer tail extends string[]]
   ? ParseColumn<head, signature> & MergeColumns<tail, signature>
-  : {}
+  : // biome-ignore lint/complexity/noBannedTypes: _
+    {}
 
 /**
  * Extracts the columns from the SQL query
@@ -437,7 +442,8 @@ type ProcessColumns<
   signature extends readonly string[] | string | undefined,
 > = ExtractColumns<sql> extends infer columns extends string
   ? SplitColumns<columns> extends infer columns extends string[]
-    ? MergeColumns<columns, signature> extends infer Row extends Record<string, any>
+    ? // biome-ignore lint/suspicious/noExplicitAny: _
+      MergeColumns<columns, signature> extends infer Row extends Record<string, any>
       ? readonly Compute<Row>[]
       : never
     : never
