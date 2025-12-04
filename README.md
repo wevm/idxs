@@ -80,6 +80,15 @@ const next = await qb
   .select(['hash'])
   .limit(10)
   .execute()
+
+// Live streaming
+for await (const txs of qb
+  .selectFrom('txs')
+  .select(['hash', 'from', 'to', 'value'])
+  .where('chain', '=', 1)
+  .stream()
+)
+  console.log(txs)
 ```
 
 ## API
