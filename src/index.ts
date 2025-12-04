@@ -1,2 +1,4 @@
 export * as IndexSupply from './IndexSupply.js'
 export * as IS from './IndexSupply.js'
+export * as QueryBuilder from './QueryBuilder.js'
+export * as QB from './QueryBuilder.js'

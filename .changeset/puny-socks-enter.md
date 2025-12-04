@@ -1,0 +1,5 @@
+---
+"idxs": patch
+---
+
+Exported `QueryBuilder`.
