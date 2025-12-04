@@ -12,20 +12,38 @@
     "@biomejs/biome": "latest",
     "@changesets/cli": "latest",
     "@types/node": "latest",
+    "@vitest/coverage-v8": "4.0.12",
     "typescript": "latest",
+    "viem": "latest",
     "vitest": "latest",
     "zile": "latest"
   },
   "packageManager": "pnpm@10.23.0",
   "[!start-pkg]": "",
-  "name": "supin",
+  "name": "idxs",
   "type": "module",
   "version": "0.0.0",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "license": "MIT",
   "files": [
     "dist",
     "src"
   ],
-  "dependencies": {}
+  "dependencies": {
+    "abitype": "^1.2.0",
+    "eventemitter3": "^5.0.1",
+    "kysely": "^0.28.8",
+    "ox": "^0.9.14",
+    "zod": "^4.1.13"
+  },
+  "sideEffects": false,
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "src": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  }
 }

@@ -1,3 +1,6 @@
+.env
+.priv
+coverage
 dist
 node_modules
 *.tsbuildinfo
