@@ -689,15 +689,15 @@ describe('create', () => {
       expect(listener2Calls).toEqual([2])
     })
 
-    test('behavior: debug event is emitted for all events', async () => {
-      const debugEvents: Array<{
+    test('behavior: wildcard event is emitted for all events', async () => {
+      const wildcardEvents: Array<{
         event: string
         data: unknown
         options: { id: string }
       }> = []
 
-      is.on('debug', (event, data, options) => {
-        debugEvents.push({
+      is.on('*', (event, data, options) => {
+        wildcardEvents.push({
           event,
           data,
           options,
@@ -710,30 +710,30 @@ describe('create', () => {
       })
 
       // Should have captured both request and response events
-      expect(debugEvents.length).toBeGreaterThanOrEqual(2)
+      expect(wildcardEvents.length).toBeGreaterThanOrEqual(2)
 
-      // Check that debug event was emitted for request
-      const requestEvent = debugEvents.find((e) => e.event === 'request')
+      // Check that wildcard event was emitted for request
+      const requestEvent = wildcardEvents.find((e) => e.event === 'request')
       expect(requestEvent).toBeDefined()
       expect(requestEvent?.data).toBeInstanceOf(Request)
       expect(requestEvent?.options.id).toBeDefined()
 
-      // Check that debug event was emitted for response
-      const responseEvent = debugEvents.find((e) => e.event === 'response')
+      // Check that wildcard event was emitted for response
+      const responseEvent = wildcardEvents.find((e) => e.event === 'response')
       expect(responseEvent).toBeDefined()
       expect(responseEvent?.data).toBeInstanceOf(Response)
       expect(responseEvent?.options.id).toBeDefined()
     })
 
-    test('behavior: debug event is emitted for error events', async () => {
-      const debugEvents: Array<{
+    test('behavior: wildcard event is emitted for error events', async () => {
+      const wildcardEvents: Array<{
         event: string
         data: unknown
         options: { id: string }
       }> = []
 
-      is.on('debug', (event, data, options) => {
-        debugEvents.push({
+      is.on('*', (event, data, options) => {
+        wildcardEvents.push({
           event,
           data,
           options,
@@ -746,11 +746,11 @@ describe('create', () => {
         }),
       ).rejects.toThrow()
 
-      // Should have captured request, response, and error events via debug
-      expect(debugEvents.length).toBeGreaterThanOrEqual(3)
+      // Should have captured request, response, and error events via wildcard
+      expect(wildcardEvents.length).toBeGreaterThanOrEqual(3)
 
-      // Check that debug event was emitted for error
-      const errorEvent = debugEvents.find((e) => e.event === 'error')
+      // Check that wildcard event was emitted for error
+      const errorEvent = wildcardEvents.find((e) => e.event === 'error')
       expect(errorEvent).toBeDefined()
       expect(errorEvent?.data).toBeInstanceOf(Error)
       expect(errorEvent?.options.id).toBeDefined()

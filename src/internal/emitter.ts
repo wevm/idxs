@@ -1,10 +1,29 @@
-import { EventEmitter } from 'eventemitter3'
+import mitt from 'mitt'
 
 export type Emitter = {
   instance: () => {
-    emit: EventEmitter<EventTypes>['emit']
+    emit: <K extends Events[number]['event']>(
+      type: K,
+      data: Extract<Events[number], { event: K }>['data'],
+    ) => void
   }
-  on: EventEmitter<EventTypes<true>>['on']
+  on: {
+    <K extends Events[number]['event']>(
+      type: K,
+      handler: (
+        data: Extract<Events[number], { event: K }>['data'],
+        options: { id: string },
+      ) => void,
+    ): void
+    (
+      type: '*',
+      handler: (
+        type: Events[number]['event'],
+        data: Events[number]['data'],
+        options: { id: string },
+      ) => void,
+    ): void
+  }
 }
 
 export type Events = [
@@ -26,37 +45,44 @@ export type Events = [
   },
 ]
 
-export type EventTypes<includeOptions extends boolean = false> = {
-  debug: (
-    event: Events[number]['event'],
-    data: Events[number]['data'],
-    ...rest: includeOptions extends true ? readonly [{ id: string }] : readonly []
-  ) => void
-} & {
-  [K in Events[number] as K['event']]: (
-    parameters: K['data'],
-    ...rest: includeOptions extends true ? readonly [{ id: string }] : readonly []
-  ) => void
+type InternalEvents = {
+  [K in Events[number]['event']]: {
+    data: Extract<Events[number], { event: K }>['data']
+    id: string
+  }
 }
 
 export function create(): Emitter {
-  const e = new EventEmitter<EventTypes<true>>()
+  // @ts-expect-error -- this works
+  const e = mitt<InternalEvents>()
   let id = -1
 
   function instance() {
     id++
+    const instanceId = String(id)
     return {
-      emit: ((...args) => {
+      emit: ((type, data) => {
         // biome-ignore lint/suspicious/noExplicitAny: _
-        ;(e as any).emit('debug', args[0], args[1], { id })
-        // biome-ignore lint/suspicious/noExplicitAny: _
-        return (e as any).emit(args[0], args[1], { id })
-      }) satisfies EventEmitter<EventTypes>['emit'],
+        e.emit(type, { data, id: instanceId } as any)
+      }) satisfies Emitter['instance'] extends () => { emit: infer E } ? E : never,
     }
   }
 
   return {
     instance,
-    on: e.on.bind(e) as never,
+    // biome-ignore lint/suspicious/noExplicitAny: _
+    on: ((type: string, handler: (...args: any[]) => void) => {
+      if (type === '*') {
+        // biome-ignore lint/suspicious/noExplicitAny: _
+        e.on('*', (eventType: string, event: any) => {
+          handler(eventType, event.data, { id: event.id })
+        })
+      } else {
+        // biome-ignore lint/suspicious/noExplicitAny: _
+        e.on(type as any, (event: any) => {
+          handler(event.data, { id: event.id })
+        })
+      }
+    }) as Emitter['on'],
   }
 }
