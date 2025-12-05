@@ -59,13 +59,14 @@ export type IS = {
    *
    * @example
    * ```ts
-   * is.on('debug', (event, data) => console.log('Debug:', event, data))
+   * is.on('*', (event, data) => console.log(event, data))
    * is.on('request', (request) => console.log('Request:', request.url))
    * is.on('response', (response) => console.log('Response:', response.status))
    * is.on('error', (error) => console.error('Error:', error.message))
    * ```
    */
   on: Emitter.Emitter['on']
+  off: Emitter.Emitter['off']
 }
 
 /** Cursor type for pagination. Can be a string or an object with `chainId` and `blockNumber`. */
@@ -160,6 +161,7 @@ export function create(options: create.Options = {}): create.ReturnValue {
     baseUrl,
 
     on: emitter.on.bind(emitter) as never,
+    off: emitter.off.bind(emitter) as never,
 
     async fetch(options) {
       const { cursor, signatures, query, retryCount = 5, ...requestInit } = options
@@ -305,7 +307,7 @@ export function create(options: create.Options = {}): create.ReturnValue {
               }
           for await (const data of readStream<IS.Result[] | Error>(reader)) {
             if ('error' in data) throw new SseError(data.message, { type: data.error })
-            for (const item of data) yield item as never
+            for (const item of data) yield item
             count = 0
           }
 

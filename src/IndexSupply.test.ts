@@ -7,6 +7,12 @@ const is = IS.create({
 
 afterEach(() => {
   vi.restoreAllMocks()
+  // Clear all event handlers to prevent accumulation across tests
+  is.off('error')
+  is.off('request')
+  is.off('response')
+  is.off('log')
+  is.off('*')
 })
 
 describe('create', () => {
@@ -18,6 +24,7 @@ describe('create', () => {
         "baseUrl": "https://api.indexsupply.net/v2",
         "fetch": [Function],
         "live": [Function],
+        "off": [Function],
         "on": [Function],
       }
     `)
@@ -32,6 +39,7 @@ describe('create', () => {
         "baseUrl": "https://api.indexsupply.net/v2",
         "fetch": [Function],
         "live": [Function],
+        "off": [Function],
         "on": [Function],
       }
     `)
@@ -1373,14 +1381,12 @@ describe('create', () => {
       })
 
       test('behavior: retries on SseError with type "server"', async () => {
-        const originalFetch = globalThis.fetch
         const controller = new AbortController()
 
-        // First call returns server error via SSE, second call succeeds
-        let callCount = 0
-        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-          callCount++
-          if (callCount === 1) {
+        // First call returns server error via SSE, second call succeeds with valid data
+        const fetchSpy = vi
+          .spyOn(globalThis, 'fetch')
+          .mockImplementationOnce(async () => {
             const mockBody = new ReadableStream({
               start(controller) {
                 const encoder = new TextEncoder()
@@ -1393,9 +1399,27 @@ describe('create', () => {
               status: 200,
               headers: { 'Content-Type': 'text/event-stream' },
             })
-          }
-          return originalFetch(input, init)
-        })
+          })
+          .mockImplementationOnce(async () => {
+            const mockBody = new ReadableStream({
+              start(ctrl) {
+                const encoder = new TextEncoder()
+                const successData = JSON.stringify([
+                  {
+                    cursor: '8453-12345',
+                    columns: [{ name: 'from' }, { name: 'to' }],
+                    rows: [['0x123', '0x456']],
+                  },
+                ])
+                ctrl.enqueue(encoder.encode(`data: ${successData}\n\n`))
+                ctrl.close()
+              },
+            })
+            return new Response(mockBody, {
+              status: 200,
+              headers: { 'Content-Type': 'text/event-stream' },
+            })
+          })
 
         const testIndexer = IS.create()
         const errors: Error[] = []
