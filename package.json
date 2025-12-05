@@ -34,8 +34,8 @@
   ],
   "dependencies": {
     "abitype": "^1.2.0",
-    "eventemitter3": "^5.0.1",
     "kysely": "^0.28.8",
+    "mitt": "^3.0.1",
     "ox": "^0.9.14",
     "zod": "^4.1.13"
   },
@@ -47,6 +47,13 @@
       "src": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    }
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "onFail": "download",
+      "version": "24.11.1"
     }
   }
 }

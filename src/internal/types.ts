@@ -20,11 +20,8 @@ export type IsNever<T> = [T] extends [never] ? true : false
  * //   ^? true
  * ```
  */
-export type IsNarrowable<T, U> = IsNever<
-  (T extends U ? true : false) & (U extends T ? false : true)
-> extends true
-  ? false
-  : true
+export type IsNarrowable<T, U> =
+  IsNever<(T extends U ? true : false) & (U extends T ? false : true)> extends true ? false : true
 
 /** Recursively trim whitespace and newlines from both ends of a string. */
 export type Trim<value extends string> = value extends ` ${infer Rest}`

@@ -268,21 +268,21 @@ type SplitColumns<
 /**
  * Check if the last word looks like a simple alias (not part of expression).
  */
-type HasSpaceSeparatedAlias<value extends string> = LastWord<value> extends infer Last extends
-  string
-  ? Last extends value
-    ? false // No whitespace found, Last is the entire string
-    : // Check if Last looks like a simple alias (no special chars)
-      Last extends `${infer _}::${infer __}` // Has type cast
-      ? false
-      : Last extends `${infer _}(${infer __}` // Has parentheses
+type HasSpaceSeparatedAlias<value extends string> =
+  LastWord<value> extends infer Last extends string
+    ? Last extends value
+      ? false // No whitespace found, Last is the entire string
+      : // Check if Last looks like a simple alias (no special chars)
+        Last extends `${infer _}::${infer __}` // Has type cast
         ? false
-        : Last extends `${infer _}"` // Ends with quote - probably part of identifier
+        : Last extends `${infer _}(${infer __}` // Has parentheses
           ? false
-          : Last extends `${infer _})` // Ends with paren - probably part of expression
+          : Last extends `${infer _}"` // Ends with quote - probably part of identifier
             ? false
-            : true
-  : false
+            : Last extends `${infer _})` // Ends with paren - probably part of expression
+              ? false
+              : true
+    : false
 
 /**
  * Strip table prefix (e.g., "t1.column" -> "column", "t1."quoted"" -> ""quoted"")
