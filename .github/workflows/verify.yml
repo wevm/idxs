@@ -35,3 +35,4 @@ jobs:
         run: pnpm run test --bail=1
         env:
           CI: true
+          VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
