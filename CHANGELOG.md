@@ -1,5 +1,11 @@
 # idxs
 
+## 0.0.4
+
+### Patch Changes
+
+- 4e3814d: Fixed `QueryBuilder.Tables` types.
+
 ## 0.0.3
 
 ### Patch Changes
