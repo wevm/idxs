@@ -14,6 +14,7 @@ import type {
 } from 'kysely'
 import { Kysely, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler } from 'kysely'
 import type * as IS from './IndexSupply.js'
+import type { StandardColumnTypes } from './internal/result.js'
 
 declare module 'kysely' {
   // @ts-expect-error
@@ -29,79 +30,79 @@ export namespace Tables {
   /** Blocks table containing blockchain block data. */
   export type Blocks = {
     /** Chain ID. */
-    chain: number
+    chain: StandardColumnTypes['chain']
     /** Block number. */
-    num: number
+    num: StandardColumnTypes['block_num']
     /** Block timestamp. */
-    timestamp: string
+    timestamp: StandardColumnTypes['block_timestamp']
     /** Block size in bytes. */
-    size: number
+    size: StandardColumnTypes['size']
     /** Gas limit for the block. */
-    gas_limit: string
+    gas_limit: StandardColumnTypes['gas_limit']
     /** Gas used in the block. */
-    gas_used: string
+    gas_used: StandardColumnTypes['gas_used']
     /** Block nonce. */
-    nonce: string
+    nonce: StandardColumnTypes['nonce']
     /** Block hash. */
-    hash: string
+    hash: StandardColumnTypes['hash']
     /** Receipts root hash. */
-    receipts_root: string
+    receipts_root: StandardColumnTypes['receipts_root']
     /** State root hash. */
-    state_root: string
+    state_root: StandardColumnTypes['state_root']
     /** Extra data. */
-    extra_data: string
+    extra_data: StandardColumnTypes['extra_data']
     /** Miner address. */
-    miner: string
+    miner: StandardColumnTypes['miner']
   }
 
   /** Transactions table containing transaction data. */
   export type Txs = {
     /** Chain ID. */
-    chain: number
+    chain: StandardColumnTypes['chain']
     /** Block number. */
-    block_num: number
+    block_num: StandardColumnTypes['block_num']
     /** Block timestamp. */
-    block_timestamp: string
+    block_timestamp: StandardColumnTypes['block_timestamp']
     /** Transaction index in block. */
-    idx: number
+    idx: StandardColumnTypes['idx']
     /** Transaction type. */
-    type: number
+    type: StandardColumnTypes['type']
     /** Gas limit. */
-    gas: string
+    gas: StandardColumnTypes['gas']
     /** Gas price. */
-    gas_price: string
+    gas_price: StandardColumnTypes['gas_price']
     /** Transaction nonce. */
-    nonce: string
+    nonce: StandardColumnTypes['nonce']
     /** Transaction hash. */
-    hash: string
+    hash: StandardColumnTypes['hash']
     /** Sender address. */
-    from: string
+    from: StandardColumnTypes['from']
     /** Recipient address. */
-    to: string
+    to: StandardColumnTypes['to']
     /** Transaction input data. */
-    input: string
+    input: StandardColumnTypes['input']
     /** Transaction value. */
-    value: string
+    value: StandardColumnTypes['value']
   }
 
   /** Logs table containing event log data. */
   export type Logs = {
     /** Chain ID. */
-    chain: number
+    chain: StandardColumnTypes['chain']
     /** Block number. */
-    block_num: number
+    block_num: StandardColumnTypes['block_num']
     /** Block timestamp. */
-    block_timestamp: string
+    block_timestamp: StandardColumnTypes['block_timestamp']
     /** Log index in block. */
-    log_idx: number
+    log_idx: StandardColumnTypes['log_idx']
     /** Transaction hash. */
-    tx_hash: string
+    tx_hash: StandardColumnTypes['tx_hash']
     /** Contract address that emitted the log. */
-    address: string
+    address: StandardColumnTypes['address']
     /** Event topics (indexed parameters). */
-    topics: string[]
+    topics: StandardColumnTypes['topics']
     /** Event data (non-indexed parameters). */
-    data: string
+    data: StandardColumnTypes['data']
   }
 }
 

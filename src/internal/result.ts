@@ -90,7 +90,7 @@ export const standardColumnTypes = {
   state_root: z.templateLiteral(['0x', z.string()]),
   timestamp: z.number(),
   to: z.templateLiteral(['0x', z.string()]),
-  topics: z.array(z.string()),
+  topics: z.array(z.templateLiteral(['0x', z.string()])),
   tx_hash: z.templateLiteral(['0x', z.string()]),
   type: z.number(),
   value: z.transform((value: string) => BigInt(value)),
