@@ -370,7 +370,12 @@ class Connection implements DatabaseConnection {
 
     compiledQuery.parameters.forEach((param, i) => {
       const placeholder = `$${i + 1}`
-      query = query.replaceAll(placeholder, String(param))
+      // Quote string parameters to avoid PostgreSQL interpreting hex as bit literals
+      const formatted =
+        typeof param === 'string'
+          ? `'${param.replace(/'/g, "''")}'` // Escape single quotes
+          : String(param)
+      query = query.replaceAll(placeholder, formatted)
     })
 
     const signatures: string[] = []

@@ -351,4 +351,41 @@ describe('from', () => {
     expect(results.length).toBeGreaterThan(0)
     expect(results.length).toBeLessThanOrEqual(maxResults)
   })
+
+  test('behavior: hex string parameters are properly quoted', async () => {
+    // This test verifies that hex strings like 0x... are properly quoted in SQL.
+    // Without proper quoting, PostgreSQL interprets 0x... as a bit string literal,
+    // causing "operator does not exist: bytea = bit" errors when comparing to bytea columns.
+    const hexAddress = '0x4200000000000000000000000000000000000006'
+    const chainId = 8453
+
+    // Capture the request to verify the SQL query
+    const requests: Request[] = []
+    is.on('request', (request) => {
+      requests.push(request)
+    })
+
+    const qb = QueryBuilder.from(is)
+
+    await qb
+      .selectFrom('txs')
+      .select(['hash'])
+      .where('chain', '=', chainId)
+      .where('to', '=', hexAddress)
+      .limit(1)
+      .execute()
+
+    expect(requests.length).toBeGreaterThan(0)
+    const request = requests[requests.length - 1]
+    if (!request) throw new Error('Request not found')
+    const body = await request.text()
+    const parsedBody = JSON.parse(body)
+    const query = parsedBody[0].query as string
+
+    // Verify the hex string is properly quoted in the SQL
+    // Without the fix: WHERE "to" = 0x4200... (bit literal - causes error)
+    // With the fix: WHERE "to" = '0x4200...' (properly quoted string)
+    expect(query).toContain(`'${hexAddress}'`)
+    expect(query).not.toMatch(new RegExp(`= ${hexAddress}(?!')`, 'i'))
+  })
 })
