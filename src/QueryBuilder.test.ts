@@ -326,6 +326,25 @@ describe('from', () => {
     expect(page2.length).toBeLessThanOrEqual(limit)
   })
 
+  test('behavior: IN clause with 10+ parameters', async () => {
+    const qb = QueryBuilder.from(is)
+    const txs = await qb
+      .selectFrom('txs')
+      .select(['hash'])
+      .where('chain', '=', 8453)
+      .limit(12)
+      .execute()
+    const hashes = txs.map((tx) => tx.hash)
+
+    const result = await qb
+      .selectFrom('txs')
+      .select(['hash'])
+      .where('chain', '=', 8453)
+      .where('hash', 'in', hashes)
+      .execute()
+    expect(result.length).toBe(12)
+  })
+
   test('behavior: streaming query with live endpoint', async () => {
     const qb = QueryBuilder.from(is).withSignatures([
       'event Transfer(address indexed from, address indexed to, uint256 value)',

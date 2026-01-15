@@ -368,10 +368,10 @@ class Connection implements DatabaseConnection {
   prepareQuery(compiledQuery: CompiledQuery) {
     let query = compiledQuery.sql
 
-    compiledQuery.parameters.forEach((param, i) => {
+    for (let i = compiledQuery.parameters.length - 1; i >= 0; i--) {
       const placeholder = `$${i + 1}`
-      query = query.replaceAll(placeholder, String(param))
-    })
+      query = query.replaceAll(placeholder, String(compiledQuery.parameters[i]))
+    }
 
     const signatures: string[] = []
 
