@@ -1,5 +1,11 @@
 # idxs
 
+## 0.0.6
+
+### Patch Changes
+
+- c82a5b6: Fixed parameter replacement.
+
 ## 0.0.5
 
 ### Patch Changes
