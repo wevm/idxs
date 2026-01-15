@@ -368,9 +368,21 @@ class Connection implements DatabaseConnection {
   prepareQuery(compiledQuery: CompiledQuery) {
     let query = compiledQuery.sql
 
+    // Iterate in reverse order so $10 is replaced before $1
     for (let i = compiledQuery.parameters.length - 1; i >= 0; i--) {
       const placeholder = `$${i + 1}`
-      query = query.replaceAll(placeholder, String(compiledQuery.parameters[i]))
+      const param = compiledQuery.parameters[i]
+      // Hex strings (0x...) should remain unquoted so sqlparser treats them as
+      // HexStringLiteral which the backend converts to proper bytea format.
+      // Other strings need quoting to be treated as text literals.
+      const isHex = isHexString(param)
+      const value =
+        typeof param === 'string'
+          ? isHex
+            ? param // hex string - leave unquoted
+            : `'${param.replace(/'/g, "''")}'` // other strings - quote
+          : String(param)
+      query = query.replaceAll(placeholder, value)
     }
 
     const signatures: string[] = []
@@ -388,6 +400,19 @@ class Connection implements DatabaseConnection {
 
     return { query, signatures }
   }
+}
+
+/** Check if a value is a hex string (0x followed by hex chars) */
+function isHexString(value: unknown): boolean {
+  if (typeof value !== 'string' || value.length < 3) return false
+  if (value[0] !== '0' || value[1] !== 'x') return false
+  for (let i = 2; i < value.length; i++) {
+    const c = value.charCodeAt(i)
+    // 0-9: 48-57, A-F: 65-70, a-f: 97-102
+    if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102)))
+      return false
+  }
+  return true
 }
 
 /** @internal */
