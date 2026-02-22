@@ -20,13 +20,13 @@
   },
   "packageManager": "pnpm@10.23.0",
   "[!start-pkg]": "",
-  "name": "tidx",
+  "name": "tidx.ts",
   "type": "module",
-  "version": "0.0.6",
+  "version": "0.0.0",
   "main": "./dist/index.js",
   "license": "MIT",
   "repository": {
-    "url": "https://github.com/tempoxyz/tidx"
+    "url": "https://github.com/tempoxyz/tidx.ts"
   },
   "files": [
     "dist",

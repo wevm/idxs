@@ -7,7 +7,7 @@
     "moduleResolution": "nodenext",
     "target": "esnext",
     "paths": {
-      "tidx": ["./src/index.ts"]
+      "tidx.ts": ["./src/index.ts"]
     },
     "types": ["node", "vitest/globals"],
 

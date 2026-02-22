@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     alias: {
-      tidx: path.resolve(import.meta.dirname, 'src'),
+      'tidx.ts': path.resolve(import.meta.dirname, 'src'),
     },
     include: ['src/**/*.test.ts'],
     globals: true,

@@ -426,7 +426,9 @@ type ExtractTableName<sql extends string> =
 /**
  * Checks if the table is a standard tidx table
  */
-type IsStandardTable<table extends string> = table extends 'blocks' | 'txs' | 'logs' | 'receipts' ? true : false
+type IsStandardTable<table extends string> = table extends 'blocks' | 'txs' | 'logs' | 'receipts'
+  ? true
+  : false
 
 /**
  * Processes the columns into a row type

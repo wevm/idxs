@@ -52,7 +52,8 @@ describe('create', () => {
   describe('.fetch', () => {
     test('behavior: tx', async () => {
       const result = await tidx.fetch({
-        query: 'select block_num, block_timestamp, idx, type, gas_limit, max_fee_per_gas, nonce, hash, "from", "to", input, value from txs limit 1',
+        query:
+          'select block_num, block_timestamp, idx, type, gas_limit, max_fee_per_gas, nonce, hash, "from", "to", input, value from txs limit 1',
       })
 
       expect(result).toHaveProperty('rows')
@@ -977,7 +978,10 @@ describe('create', () => {
     }, 30_000)
 
     test('behavior: emits request and response events', async () => {
-      const testIndexer = Tidx.create({ basicAuth: process.env.VITE_API_CREDENTIALS, chainId: 42431 })
+      const testIndexer = Tidx.create({
+        basicAuth: process.env.VITE_API_CREDENTIALS,
+        chainId: 42431,
+      })
       const controller = new AbortController()
       const events: string[] = []
 
@@ -1142,7 +1146,10 @@ describe('create', () => {
           )
           .mockImplementation(async (input, init) => originalFetch(input, init))
 
-        const testIndexer = Tidx.create({ basicAuth: process.env.VITE_API_CREDENTIALS, chainId: 42431 })
+        const testIndexer = Tidx.create({
+          basicAuth: process.env.VITE_API_CREDENTIALS,
+          chainId: 42431,
+        })
         const errors: Error[] = []
 
         testIndexer.on('error', (error) => {
@@ -1186,7 +1193,10 @@ describe('create', () => {
           )
           .mockImplementation(async (input, init) => originalFetch(input, init))
 
-        const testIndexer = Tidx.create({ basicAuth: process.env.VITE_API_CREDENTIALS, chainId: 42431 })
+        const testIndexer = Tidx.create({
+          basicAuth: process.env.VITE_API_CREDENTIALS,
+          chainId: 42431,
+        })
 
         let resultCount = 0
         for await (const result of testIndexer.live({
@@ -1371,7 +1381,10 @@ describe('create', () => {
           )
           .mockImplementation(async (input, init) => originalFetch(input, init))
 
-        const testIndexer = Tidx.create({ basicAuth: process.env.VITE_API_CREDENTIALS, chainId: 42431 })
+        const testIndexer = Tidx.create({
+          basicAuth: process.env.VITE_API_CREDENTIALS,
+          chainId: 42431,
+        })
         const errors: Error[] = []
         const requests: Request[] = []
         const responses: Response[] = []
@@ -1414,7 +1427,10 @@ describe('create', () => {
           .spyOn(globalThis, 'fetch')
           .mockImplementationOnce(async (input, init) => originalFetch(input, init))
 
-        const testIndexer = Tidx.create({ basicAuth: process.env.VITE_API_CREDENTIALS, chainId: 42431 })
+        const testIndexer = Tidx.create({
+          basicAuth: process.env.VITE_API_CREDENTIALS,
+          chainId: 42431,
+        })
 
         let resultCount = 0
         for await (const result of testIndexer.live({

@@ -13,8 +13,8 @@ import type {
   QueryResult,
 } from 'kysely'
 import { Kysely, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler } from 'kysely'
-import type * as Tidx from './Tidx.js'
 import type { StandardColumnTypes } from './internal/result.js'
+import type * as Tidx from './Tidx.js'
 
 declare module 'kysely' {
   // @ts-expect-error

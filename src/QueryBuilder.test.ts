@@ -1,7 +1,7 @@
 import { erc20Abi } from 'abitype/abis'
 import { describe, expect, test } from 'vitest'
-import * as Tidx from './Tidx.js'
 import * as QueryBuilder from './QueryBuilder.js'
+import * as Tidx from './Tidx.js'
 
 const tidx = Tidx.create({
   basicAuth: process.env.VITE_API_CREDENTIALS,
@@ -92,19 +92,11 @@ describe('from', () => {
       .withSignatures(['event Deposit(address indexed user, uint256 amount)'])
 
     // Can query both Transfer and Deposit
-    const transfers = await qb
-      .selectFrom('transfer')
-      .select(['from', 'to'])
-      .limit(2)
-      .execute()
+    const transfers = await qb.selectFrom('transfer').select(['from', 'to']).limit(2).execute()
 
     expect(Array.isArray(transfers)).toBe(true)
 
-    const deposits = await qb
-      .selectFrom('deposit')
-      .select(['user', 'amount'])
-      .limit(2)
-      .execute()
+    const deposits = await qb.selectFrom('deposit').select(['user', 'amount']).limit(2).execute()
 
     expect(Array.isArray(deposits)).toBe(true)
   })
@@ -249,18 +241,10 @@ describe('from', () => {
 
   test('behavior: IN clause with 10+ parameters', async () => {
     const qb = QueryBuilder.from(tidx)
-    const txs = await qb
-      .selectFrom('txs')
-      .select(['hash'])
-      .limit(12)
-      .execute()
+    const txs = await qb.selectFrom('txs').select(['hash']).limit(12).execute()
     const hashes = txs.map((tx) => tx.hash)
 
-    const result = await qb
-      .selectFrom('txs')
-      .select(['hash'])
-      .where('hash', 'in', hashes)
-      .execute()
+    const result = await qb.selectFrom('txs').select(['hash']).where('hash', 'in', hashes).execute()
     expect(result.length).toBe(12)
   })
 
@@ -269,11 +253,7 @@ describe('from', () => {
       'event Transfer(address indexed from, address indexed to, uint256 value)',
     ])
 
-    const stream = qb
-      .selectFrom('transfer')
-      .select(['from', 'to', 'value'])
-      .limit(5)
-      .stream()
+    const stream = qb.selectFrom('transfer').select(['from', 'to', 'value']).limit(5).stream()
 
     const results: unknown[] = []
     let count = 0
