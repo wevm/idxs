@@ -4,7 +4,7 @@ import * as Result from './result.js'
 describe('ToRows', () => {
   test('default', () => {
     type Rows = Result.ToRows<
-      `select "from", "to", tokens from transfer where chain = 8453 limit 3`,
+      `select "from", "to", tokens from transfer where block_num > 100 limit 3`,
       ['event Transfer(address indexed from, address indexed to, uint256 tokens)']
     >
 
@@ -187,14 +187,15 @@ and t2.tokenId is null
     }>()
   })
 
-  test('behavior: infers array type for topics column', () => {
+  test('behavior: infers type for topic0 column', () => {
     type Rows = Result.ToRows<`
       select
         block_num,
         log_idx,
         tx_hash,
         address,
-        topics,
+        topic0,
+        topic1,
         data
       from logs
       where address = 0x1234567890123456789012345678901234567890
@@ -205,7 +206,8 @@ and t2.tokenId is null
       log_idx: number
       tx_hash: `0x${string}`
       address: `0x${string}`
-      topics: `0x${string}`[]
+      topic0: `0x${string}`
+      topic1: `0x${string}`
       data: `0x${string}`
     }>()
   })
@@ -215,55 +217,52 @@ describe('parse', () => {
   describe('txs table', () => {
     test('default', () => {
       const raw: Result.Raw = {
-        cursor: '8453-123',
+        ok: true,
         columns: [
-          { name: 'block_num', pgtype: 'int8' },
-          { name: 'block_timestamp', pgtype: 'timestamptz' },
-          { name: 'chain', pgtype: 'int8' },
-          { name: 'from', pgtype: 'bytea' },
-          { name: 'gas', pgtype: 'numeric' },
-          { name: 'gas_price', pgtype: 'numeric' },
-          { name: 'hash', pgtype: 'bytea' },
-          { name: 'idx', pgtype: 'int4' },
-          { name: 'input', pgtype: 'bytea' },
-          { name: 'nonce', pgtype: 'bytea' },
-          { name: 'to', pgtype: 'bytea' },
-          { name: 'type', pgtype: 'int2' },
-          { name: 'value', pgtype: 'numeric' },
+          'block_num',
+          'block_timestamp',
+          'from',
+          'gas_limit',
+          'max_fee_per_gas',
+          'hash',
+          'idx',
+          'input',
+          'nonce',
+          'to',
+          'type',
+          'value',
         ],
         rows: [
           [
             12345678,
-            '2023-06-15 0:35:51.0 +00:00:00',
-            8453,
+            '2025-01-01T00:00:00+00:00',
             '0xabcdef1234567890abcdef1234567890abcdef01',
-            '21000',
+            21000,
             '1000000000',
             '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
             0,
             '0xdeadbeef',
-            '42',
+            42,
             '0xfedcba0987654321fedcba0987654321fedcba02',
             2,
             '1000000000000000000',
           ],
         ],
+        row_count: 1,
       }
 
       const result = Result.parse(raw, {
         query:
-          'select block_num, block_timestamp, chain, "from", gas, gas_price, hash, idx, input, nonce, "to", type, value from txs',
+          'select block_num, block_timestamp, "from", gas_limit, max_fee_per_gas, hash, idx, input, nonce, "to", type, value from txs',
       })
 
-      expectTypeOf(result.cursor).toEqualTypeOf<string>()
       expectTypeOf(result.rows).toExtend<
         readonly {
           block_num: bigint
           block_timestamp: number
-          chain: number
           from: string
-          gas: bigint
-          gas_price: bigint
+          gas_limit: bigint
+          max_fee_per_gas: bigint
           hash: string
           idx: number
           input: string
@@ -276,18 +275,16 @@ describe('parse', () => {
 
       expect(result).toMatchInlineSnapshot(`
         {
-          "cursor": "8453-123",
           "rows": [
             {
               "block_num": 12345678n,
-              "block_timestamp": 1686789351,
-              "chain": 8453,
+              "block_timestamp": 1735689600,
               "from": "0xabcdef1234567890abcdef1234567890abcdef01",
-              "gas": 21000n,
-              "gas_price": 1000000000n,
+              "gas_limit": 21000n,
               "hash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
               "idx": 0,
               "input": "0xdeadbeef",
+              "max_fee_per_gas": 1000000000n,
               "nonce": 42n,
               "to": "0xfedcba0987654321fedcba0987654321fedcba02",
               "type": 2,
@@ -300,36 +297,30 @@ describe('parse', () => {
 
     test('behavior: parses multiple rows', () => {
       const raw: Result.Raw = {
-        cursor: '8453-123',
-        columns: [
-          { name: 'chain', pgtype: 'int8' },
-          { name: 'hash', pgtype: 'bytea' },
-        ],
+        ok: true,
+        columns: ['hash'],
         rows: [
-          [8453, '0xabc123def456789012345678901234567890123456789012345678901234abcd'],
-          [8453, '0xdef456abc789012345678901234567890123456789012345678901234567efab'],
-          [8453, '0x789abc012345678901234567890123456789012345678901234567890123cdef'],
+          ['0xabc123def456789012345678901234567890123456789012345678901234abcd'],
+          ['0xdef456abc789012345678901234567890123456789012345678901234567efab'],
+          ['0x789abc012345678901234567890123456789012345678901234567890123cdef'],
         ],
+        row_count: 3,
       }
 
       const result = Result.parse(raw, {
-        query: 'select chain, hash from txs',
+        query: 'select hash from txs',
       })
 
       expect(result).toMatchInlineSnapshot(`
         {
-          "cursor": "8453-123",
           "rows": [
             {
-              "chain": 8453,
               "hash": "0xabc123def456789012345678901234567890123456789012345678901234abcd",
             },
             {
-              "chain": 8453,
               "hash": "0xdef456abc789012345678901234567890123456789012345678901234567efab",
             },
             {
-              "chain": 8453,
               "hash": "0x789abc012345678901234567890123456789012345678901234567890123cdef",
             },
           ],
@@ -341,70 +332,65 @@ describe('parse', () => {
   describe('logs table', () => {
     test('default', () => {
       const raw: Result.Raw = {
-        cursor: '8453-123',
+        ok: true,
         columns: [
-          { name: 'address', pgtype: 'bytea' },
-          { name: 'block_num', pgtype: 'int8' },
-          { name: 'block_timestamp', pgtype: 'timestamptz' },
-          { name: 'chain', pgtype: 'int8' },
-          { name: 'data', pgtype: 'bytea' },
-          { name: 'log_idx', pgtype: 'int4' },
-          { name: 'topics', pgtype: 'bytea[]' },
-          { name: 'tx_hash', pgtype: 'bytea' },
+          'address',
+          'block_num',
+          'block_timestamp',
+          'data',
+          'log_idx',
+          'topic0',
+          'topic1',
+          'topic2',
+          'tx_hash',
         ],
         rows: [
           [
             '0xc0ffee254729296a45a3885639ac7e10f9d54979',
             12345678,
-            '2023-06-15 0:35:51.0 +00:00:00',
-            8453,
+            '2025-01-01T00:00:00+00:00',
             '0x00112233445566778899aabbccddeeff',
             5,
-            [
-              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
-              '0x000000000000000000000000abc123def456789012345678901234567890abcd',
-              '0x000000000000000000000000def456abc789012345678901234567890123efab',
-            ],
+            '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+            '0x000000000000000000000000abc123def456789012345678901234567890abcd',
+            '0x000000000000000000000000def456abc789012345678901234567890123efab',
             '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
           ],
         ],
+        row_count: 1,
       }
 
       const result = Result.parse(raw, {
         query:
-          'select address, block_num, block_timestamp, chain, data, log_idx, topics, tx_hash from logs',
+          'select address, block_num, block_timestamp, data, log_idx, topic0, topic1, topic2, tx_hash from logs',
       })
 
-      expectTypeOf(result.cursor).toEqualTypeOf<string>()
       expectTypeOf(result.rows).toExtend<
         readonly {
           address: `0x${string}`
           block_num: bigint
           block_timestamp: number
-          chain: number
           data: `0x${string}`
           log_idx: number
-          topics: `0x${string}`[]
+          topic0: `0x${string}`
+          topic1: `0x${string}`
+          topic2: `0x${string}`
           tx_hash: `0x${string}`
         }[]
       >()
 
       expect(result).toMatchInlineSnapshot(`
         {
-          "cursor": "8453-123",
           "rows": [
             {
               "address": "0xc0ffee254729296a45a3885639ac7e10f9d54979",
               "block_num": 12345678n,
-              "block_timestamp": 1686789351,
-              "chain": 8453,
+              "block_timestamp": 1735689600,
               "data": "0x00112233445566778899aabbccddeeff",
               "log_idx": 5,
-              "topics": [
-                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-                "0x000000000000000000000000abc123def456789012345678901234567890abcd",
-                "0x000000000000000000000000def456abc789012345678901234567890123efab",
-              ],
+              "topic0": "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "topic1": "0x000000000000000000000000abc123def456789012345678901234567890abcd",
+              "topic2": "0x000000000000000000000000def456abc789012345678901234567890123efab",
               "tx_hash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
             },
           ],
@@ -416,79 +402,66 @@ describe('parse', () => {
   describe('blocks table', () => {
     test('default', () => {
       const raw: Result.Raw = {
-        cursor: '8453-123',
+        ok: true,
         columns: [
-          { name: 'chain', pgtype: 'int8' },
-          { name: 'extra_data', pgtype: 'bytea' },
-          { name: 'gas_limit', pgtype: 'numeric' },
-          { name: 'gas_used', pgtype: 'numeric' },
-          { name: 'hash', pgtype: 'bytea' },
-          { name: 'miner', pgtype: 'bytea' },
-          { name: 'nonce', pgtype: 'bytea' },
-          { name: 'num', pgtype: 'int8' },
-          { name: 'receipts_root', pgtype: 'bytea' },
-          { name: 'size', pgtype: 'int4' },
-          { name: 'state_root', pgtype: 'bytea' },
-          { name: 'timestamp', pgtype: 'int8' },
+          'extra_data',
+          'gas_limit',
+          'gas_used',
+          'hash',
+          'miner',
+          'num',
+          'parent_hash',
+          'timestamp',
+          'timestamp_ms',
         ],
         rows: [
           [
-            8453,
             '0x496c6c756d696e61746544',
-            30000000n,
-            21000n,
+            30000000,
+            21000,
             '0xaabbccdd11223344556677889900aabbccdd11223344556677889900aabbccdd',
             '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
-            '0',
-            12345678n,
-            '0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421',
-            1234,
-            '0xd7f8974fb5ac78d9ac099b9ad5018bedc2ce0a72dad1827a1709da30580f0544',
-            1686789351,
+            12345678,
+            '0x1122334455667788990011223344556677889900112233445566778899001122',
+            '2025-01-01T00:00:00+00:00',
+            1735689600000,
           ],
         ],
+        row_count: 1,
       }
 
       const result = Result.parse(raw, {
         query:
-          'select chain, extra_data, gas_limit, gas_used, hash, miner, nonce, num, receipts_root, size, state_root, timestamp from blocks',
+          'select extra_data, gas_limit, gas_used, hash, miner, num, parent_hash, timestamp, timestamp_ms from blocks',
       })
 
-      expectTypeOf(result.cursor).toEqualTypeOf<string>()
       expectTypeOf(result.rows).toExtend<
         readonly {
-          chain: number
           extra_data: `0x${string}`
           gas_limit: bigint
           gas_used: bigint
           hash: `0x${string}`
           miner: `0x${string}`
-          nonce: bigint
           num: bigint
-          receipts_root: `0x${string}`
-          size: number
-          state_root: `0x${string}`
+          parent_hash: `0x${string}`
           timestamp: number
+          timestamp_ms: bigint
         }[]
       >()
 
       expect(result).toMatchInlineSnapshot(`
         {
-          "cursor": "8453-123",
           "rows": [
             {
-              "chain": 8453,
               "extra_data": "0x496c6c756d696e61746544",
               "gas_limit": 30000000n,
               "gas_used": 21000n,
               "hash": "0xaabbccdd11223344556677889900aabbccdd11223344556677889900aabbccdd",
               "miner": "0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5",
-              "nonce": 0n,
               "num": 12345678n,
-              "receipts_root": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-              "size": 1234,
-              "state_root": "0xd7f8974fb5ac78d9ac099b9ad5018bedc2ce0a72dad1827a1709da30580f0544",
-              "timestamp": 1686789351,
+              "parent_hash": "0x1122334455667788990011223344556677889900112233445566778899001122",
+              "timestamp": 1735689600,
+              "timestamp_ms": 1735689600000n,
             },
           ],
         }
@@ -499,42 +472,32 @@ describe('parse', () => {
   describe('events table', () => {
     test('default', () => {
       const raw: Result.Raw = {
-        cursor: '8453-123',
+        ok: true,
         columns: [
-          // logs table types
-          { name: 'chain', pgtype: 'int8' },
-          { name: 'block_num', pgtype: 'int8' },
-          { name: 'block_timestamp', pgtype: 'timestamptz' },
-          { name: 'log_idx', pgtype: 'int4' },
-          { name: 'tx_hash', pgtype: 'bytea' },
-          // address types
-          { name: 'sender', pgtype: 'bytea' },
-          { name: 'receiver', pgtype: 'bytea' },
-          // bool type
-          { name: 'approved', pgtype: 'bool' },
-          // bytes types
-          { name: 'data', pgtype: 'bytea' },
-          { name: 'hash', pgtype: 'bytea' },
-          // bytes array
-          { name: 'hashes', pgtype: 'bytea[]' },
-          // small int/uint (size <= 48) -> number
-          { name: 'small', pgtype: 'int4' },
-          { name: 'medium', pgtype: 'int4' },
-          { name: 'exact', pgtype: 'int8' },
-          // large int/uint (size > 48) -> bigint
-          { name: 'amount', pgtype: 'numeric' },
-          { name: 'balance', pgtype: 'numeric' },
-          { name: 'total', pgtype: 'numeric' },
-          // string type
-          { name: 'name', pgtype: 'text' },
-          { name: 'symbol', pgtype: 'text' },
+          'block_num',
+          'block_timestamp',
+          'log_idx',
+          'tx_hash',
+          'sender',
+          'receiver',
+          'approved',
+          'data',
+          'hash',
+          'hashes',
+          'small',
+          'medium',
+          'exact',
+          'amount',
+          'balance',
+          'total',
+          'name',
+          'symbol',
         ],
         rows: [
           [
             // logs table
-            8453,
             12345678,
-            '2023-06-15 0:35:51.0 +00:00:00',
+            '2025-01-01T00:00:00+00:00',
             5,
             '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
             // address
@@ -560,21 +523,20 @@ describe('parse', () => {
             'ETH',
           ],
         ],
+        row_count: 1,
       }
 
       const result = Result.parse(raw, {
         query:
-          'select address, chain, block_num, block_timestamp, log_idx, tx_hash, sender, receiver, approved, data, hash, hashes, small, medium, exact, amount, balance, total, name, symbol from alltypes',
+          'select address, block_num, block_timestamp, log_idx, tx_hash, sender, receiver, approved, data, hash, hashes, small, medium, exact, amount, balance, total, name, symbol from alltypes',
         signatures: [
           'event AllTypes(address indexed sender, address indexed receiver, bool approved, bytes data, bytes32 hash, bytes32[] hashes, uint8 small, uint16 medium, uint48 exact, uint64 amount, uint128 balance, uint256 total, string name, string symbol)',
         ],
       })
 
-      expectTypeOf(result.cursor).toEqualTypeOf<string>()
       expectTypeOf(result.rows).toExtend<
         readonly {
           address: `0x${string}`
-          chain: number
           block_num: bigint
           block_timestamp: number
           log_idx: number
@@ -598,15 +560,13 @@ describe('parse', () => {
 
       expect(result).toMatchInlineSnapshot(`
         {
-          "cursor": "8453-123",
           "rows": [
             {
               "amount": 1000000000000000000n,
               "approved": true,
               "balance": 999999999999999999999n,
               "block_num": 12345678n,
-              "block_timestamp": 1686789351,
-              "chain": 8453,
+              "block_timestamp": 1735689600,
               "data": "0xdeadbeef",
               "exact": 281474976710655,
               "hash": "0xaabbccdd11223344556677889900aabbccdd11223344556677889900aabbccdd",
@@ -633,9 +593,10 @@ describe('parse', () => {
 
   test('behavior: table prefix handling', () => {
     const raw: Result.Raw = {
-      cursor: '8453-123',
-      columns: [{ name: 'hash', pgtype: 'bytea' }],
+      ok: true,
+      columns: ['hash'],
       rows: [['0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890']],
+      row_count: 1,
     }
 
     const result = Result.parse(raw, {
@@ -644,7 +605,6 @@ describe('parse', () => {
 
     expect(result).toMatchInlineSnapshot(`
       {
-        "cursor": "8453-123",
         "rows": [
           {
             "hash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
@@ -656,12 +616,10 @@ describe('parse', () => {
 
   test('behavior: non-standard table', () => {
     const raw: Result.Raw = {
-      cursor: '8453-123',
-      columns: [
-        { name: 'foo', pgtype: 'text' },
-        { name: 'bar', pgtype: 'int8' },
-      ],
+      ok: true,
+      columns: ['foo', 'bar'],
       rows: [['hello', 123]],
+      row_count: 1,
     }
 
     // Use type assertion since non-standard tables require signatures at type level
@@ -670,34 +628,33 @@ describe('parse', () => {
     })
 
     expect(result).toMatchInlineSnapshot(`
-        {
-          "cursor": "8453-123",
-          "rows": [
-            {
-              "bar": 123,
-              "foo": "hello",
-            },
-          ],
-        }
-      `)
+      {
+        "rows": [
+          {
+            "bar": 123,
+            "foo": "hello",
+          },
+        ],
+      }
+    `)
   })
 
   test('behavior: empty results', () => {
     const raw: Result.Raw = {
-      cursor: '8453-123',
-      columns: [{ name: 'chain', pgtype: 'int8' }],
+      ok: true,
+      columns: ['hash'],
       rows: [],
+      row_count: 0,
     }
 
     const result = Result.parse(raw, {
-      query: 'select chain from txs',
+      query: 'select hash from txs',
     })
 
     expect(result).toMatchInlineSnapshot(`
-        {
-          "cursor": "8453-123",
-          "rows": [],
-        }
-      `)
+      {
+        "rows": [],
+      }
+    `)
   })
 })

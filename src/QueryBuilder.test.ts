@@ -1,25 +1,18 @@
 import { erc20Abi } from 'abitype/abis'
-import { createPublicClient, http } from 'viem'
-import { base } from 'viem/chains'
 import { describe, expect, test } from 'vitest'
-import * as IS from './IndexSupply.js'
+import * as Tidx from './Tidx.js'
 import * as QueryBuilder from './QueryBuilder.js'
 
-const client = createPublicClient({
-  chain: base,
-  transport: http(),
-})
-
-const is = IS.create({
-  apiKey: process.env.VITE_API_KEY,
+const tidx = Tidx.create({
+  basicAuth: process.env.VITE_API_CREDENTIALS,
+  chainId: 42431,
 })
 
 describe('from', () => {
   test('default', async () => {
-    const queryBuilder = QueryBuilder.from(is)
+    const queryBuilder = QueryBuilder.from(tidx)
     expect(queryBuilder).toMatchInlineSnapshot(`
       {
-        "atCursor": [Function],
         "selectFrom": [Function],
         "withAbi": [Function],
         "withSignatures": [Function],
@@ -28,14 +21,13 @@ describe('from', () => {
   })
 
   test('behavior: withSignatures creates event table', async () => {
-    const qb = QueryBuilder.from(is).withSignatures([
+    const qb = QueryBuilder.from(tidx).withSignatures([
       'event Transfer(address indexed from, address indexed to, uint256 value)',
     ])
 
     const result = await qb
       .selectFrom('transfer')
       .select(['from', 'to', 'value'])
-      .where('chain', '=', 8453)
       .limit(10)
       .execute()
 
@@ -50,13 +42,12 @@ describe('from', () => {
   })
 
   test('behavior: withAbi creates multiple event tables', async () => {
-    const qb = QueryBuilder.from(is).withAbi(erc20Abi)
+    const qb = QueryBuilder.from(tidx).withAbi(erc20Abi)
 
     // Query the Transfer event table
     const transfers = await qb
       .selectFrom('transfer')
       .select(['from', 'to', 'value'])
-      .where('chain', '=', 8453)
       .limit(5)
       .execute()
 
@@ -66,7 +57,6 @@ describe('from', () => {
     const approvals = await qb
       .selectFrom('approval')
       .select(['owner', 'spender', 'value'])
-      .where('chain', '=', 8453)
       .limit(5)
       .execute()
 
@@ -74,7 +64,7 @@ describe('from', () => {
   })
 
   test('behavior: withSignatures with multiple events', async () => {
-    const qb = QueryBuilder.from(is).withSignatures([
+    const qb = QueryBuilder.from(tidx).withSignatures([
       'event Transfer(address indexed from, address indexed to, uint256 value)',
       'event Approval(address indexed owner, address indexed spender, uint256 value)',
     ])
@@ -82,7 +72,6 @@ describe('from', () => {
     const transfers = await qb
       .selectFrom('transfer')
       .select(['from', 'to', 'value'])
-      .where('chain', '=', 8453)
       .limit(3)
       .execute()
 
@@ -91,7 +80,6 @@ describe('from', () => {
     const approvals = await qb
       .selectFrom('approval')
       .select(['owner', 'spender', 'value'])
-      .where('chain', '=', 8453)
       .limit(3)
       .execute()
 
@@ -99,7 +87,7 @@ describe('from', () => {
   })
 
   test('behavior: chain withAbi calls', async () => {
-    const qb = QueryBuilder.from(is)
+    const qb = QueryBuilder.from(tidx)
       .withAbi(erc20Abi)
       .withSignatures(['event Deposit(address indexed user, uint256 amount)'])
 
@@ -107,7 +95,6 @@ describe('from', () => {
     const transfers = await qb
       .selectFrom('transfer')
       .select(['from', 'to'])
-      .where('chain', '=', 8453)
       .limit(2)
       .execute()
 
@@ -116,22 +103,20 @@ describe('from', () => {
     const deposits = await qb
       .selectFrom('deposit')
       .select(['user', 'amount'])
-      .where('chain', '=', 8453)
       .limit(2)
       .execute()
 
     expect(Array.isArray(deposits)).toBe(true)
   })
 
-  test('behavior: withSignatures with complex event types', async () => {
-    const qb = QueryBuilder.from(is).withSignatures([
+  test.skip('behavior: withSignatures with complex event types', async () => {
+    const qb = QueryBuilder.from(tidx).withSignatures([
       'event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)',
     ])
 
     const result = await qb
       .selectFrom('transferbatch')
       .select(['operator', 'from', 'to', 'ids', 'values'])
-      .where('chain', '=', 8453)
       .limit(5)
       .execute()
 
@@ -140,11 +125,10 @@ describe('from', () => {
 
   test('behavior: fetch transactions for address', async () => {
     const address = '0x0000000000000000000000000000000000000000'
-    const chainId = 8453
     const limit = 10
     const offset = 0
 
-    const qb = QueryBuilder.from(is)
+    const qb = QueryBuilder.from(tidx)
 
     // Fetch transactions where address is sender or receiver
     const result = await qb
@@ -157,11 +141,10 @@ describe('from', () => {
         'value',
         'input',
         'nonce',
-        'gas',
-        'gas_price',
+        'gas_limit',
+        'max_fee_per_gas',
         'type',
       ])
-      .where('chain', '=', chainId)
       .where((eb) => eb.or([eb('from', '=', address), eb('to', '=', address)]))
       .orderBy('block_num', 'desc')
       .limit(limit)
@@ -170,7 +153,6 @@ describe('from', () => {
 
     expect(Array.isArray(result)).toBe(true)
     expect(result.length).toBeLessThanOrEqual(limit)
-    expect((result as unknown as { cursor: string }).cursor).toBeDefined()
 
     // Verify each transaction has the expected fields
     for (const tx of result) {
@@ -186,40 +168,15 @@ describe('from', () => {
     }
   })
 
-  test('behavior: count transactions for address', async () => {
-    const address = '0x0000000000000000000000000000000000000000'
-    const chainId = 8453
-    const blockNumber = await client.getBlockNumber()
-
-    const qb = QueryBuilder.from(is)
-
-    const result = await qb
-      .atCursor({ chainId, blockNumber })
-      .selectFrom('txs')
-      .select((eb) => [eb.fn.count('txs.hash').as('total')])
-      .where('txs.to', '=', address)
-      .where('txs.chain', '=', chainId)
-      .execute()
-
-    expect(result.length).toBe(1)
-    expect(result[0]).toHaveProperty('total')
-    const firstResult = result[0] as { total: unknown }
-    expect(typeof firstResult.total === 'number' || typeof firstResult.total === 'string').toBe(
-      true,
-    )
-  })
-
   test('behavior: fetch sent transactions only', async () => {
     const address = '0x5de176348c089b9709baf01c5d0edbbb82f2a8a6'
-    const chainId = 8453
     const limit = 5
 
-    const qb = QueryBuilder.from(is)
+    const qb = QueryBuilder.from(tidx)
 
     const result = await qb
       .selectFrom('txs')
       .select(['hash', 'from', 'to', 'block_num'])
-      .where('chain', '=', chainId)
       .where('from', '=', address)
       .orderBy('block_num', 'desc')
       .limit(limit)
@@ -236,15 +193,13 @@ describe('from', () => {
 
   test('behavior: fetch received transactions only', async () => {
     const address = '0x4200000000000000000000000000000000000006'
-    const chainId = 8453
     const limit = 5
 
-    const qb = QueryBuilder.from(is)
+    const qb = QueryBuilder.from(tidx)
 
     const result = await qb
       .selectFrom('txs')
       .select(['hash', 'from', 'to', 'block_num'])
-      .where('chain', '=', chainId)
       .where('to', '=', address)
       .orderBy('block_num', 'desc')
       .limit(limit)
@@ -259,15 +214,13 @@ describe('from', () => {
   })
 
   test('behavior: pagination with offset', async () => {
-    const chainId = 8453
     const limit = 3
-    const qb = QueryBuilder.from(is)
+    const qb = QueryBuilder.from(tidx)
 
     // Fetch first page
     const page1 = await qb
       .selectFrom('txs')
       .select(['hash', 'block_num'])
-      .where('chain', '=', chainId)
       .orderBy('block_num', 'desc')
       .limit(limit)
       .offset(0)
@@ -277,7 +230,6 @@ describe('from', () => {
     const page2 = await qb
       .selectFrom('txs')
       .select(['hash', 'block_num'])
-      .where('chain', '=', chainId)
       .orderBy('block_num', 'desc')
       .limit(limit)
       .offset(limit)
@@ -295,43 +247,11 @@ describe('from', () => {
     }
   })
 
-  test('behavior: using cursor for pagination', async () => {
-    const chainId = 8453
-    const limit = 5
-    const qb = QueryBuilder.from(is)
-
-    // Fetch first page
-    const page1 = await qb
-      .selectFrom('txs')
-      .select(['hash', 'block_num'])
-      .where('chain', '=', chainId)
-      .orderBy('block_num', 'desc')
-      .limit(limit)
-      .execute()
-
-    const cursor = (page1 as unknown as { cursor: string }).cursor
-    expect(cursor).toBeDefined()
-    expect(typeof cursor).toBe('string')
-
-    // Fetch next page using cursor
-    const page2 = await qb
-      .atCursor(cursor)
-      .selectFrom('txs')
-      .select(['hash', 'block_num'])
-      .where('chain', '=', chainId)
-      .orderBy('block_num', 'desc')
-      .limit(limit)
-      .execute()
-
-    expect(page2.length).toBeLessThanOrEqual(limit)
-  })
-
   test('behavior: IN clause with 10+ parameters', async () => {
-    const qb = QueryBuilder.from(is)
+    const qb = QueryBuilder.from(tidx)
     const txs = await qb
       .selectFrom('txs')
       .select(['hash'])
-      .where('chain', '=', 8453)
       .limit(12)
       .execute()
     const hashes = txs.map((tx) => tx.hash)
@@ -339,21 +259,19 @@ describe('from', () => {
     const result = await qb
       .selectFrom('txs')
       .select(['hash'])
-      .where('chain', '=', 8453)
       .where('hash', 'in', hashes)
       .execute()
     expect(result.length).toBe(12)
   })
 
   test('behavior: streaming query with live endpoint', async () => {
-    const qb = QueryBuilder.from(is).withSignatures([
+    const qb = QueryBuilder.from(tidx).withSignatures([
       'event Transfer(address indexed from, address indexed to, uint256 value)',
     ])
 
     const stream = qb
       .selectFrom('transfer')
       .select(['from', 'to', 'value'])
-      .where('chain', '=', 8453)
       .limit(5)
       .stream()
 

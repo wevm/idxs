@@ -1,6 +1,5 @@
 import type { AbiParameterToPrimitiveType, AbiType, ParseAbiItem } from 'abitype'
 import * as AbiItem from 'ox/AbiItem'
-import type * as Hex from 'ox/Hex'
 import * as z from 'zod/mini'
 import type {
   CaseInsensitive,
@@ -12,20 +11,23 @@ import type {
   Whitespace,
 } from './types.js'
 
-/** Raw result from Index Supply. */
+/** Raw result from tidx API. */
 export type Raw = {
-  columns: readonly { name: string; pgtype: string }[]
-  cursor: string
+  ok: boolean
+  columns: string[]
   rows: unknown[][]
+  row_count: number
+  error?: string
+  engine?: string
+  query_time_ms?: number
 }
 
 /** Result. */
 export type Result<
-  sql extends string = string,
+  query extends string = string,
   signatures extends readonly Signature[] | undefined = undefined,
 > = {
-  cursor: string
-  rows: ToRows<sql, signatures>
+  rows: ToRows<query, signatures>
 }
 
 /** Stringified signature of a function or event. */
@@ -38,16 +40,16 @@ export type StandardColumnTypes = {
 
 /** Parses the SQL query and returns a type mapping of the rows. */
 export type ToRows<
-  sql extends string = string,
+  query extends string = string,
   signatures extends readonly Signature[] | undefined = undefined,
-> = IsNarrowable<sql, string> extends true
-  ? ExtractTableName<sql> extends infer tableName extends string
+> = IsNarrowable<query, string> extends true
+  ? ExtractTableName<query> extends infer tableName extends string
     ? IsStandardTable<tableName> extends true
-      ? ProcessColumns<sql, signatures>
+      ? ProcessColumns<query, signatures>
       : signatures extends readonly Signature[]
         ? signatures['length'] extends 0
           ? SignatureRequiredError<tableName>
-          : ProcessColumns<sql, signatures>
+          : ProcessColumns<query, signatures>
         : SignatureRequiredError<tableName>
     : never
   : Record<string, unknown>[]
@@ -55,48 +57,49 @@ export type ToRows<
 export const standardColumnTypes = {
   address: z.templateLiteral(['0x', z.string()]),
   block_num: z.transform((value: number) => BigInt(value)),
-  block_timestamp: z.transform((value: string) => {
-    const [pgDate, pgTime] = value.split(' ', 2)
-    if (!pgTime) throw new Error('Invalid timestamp format (missing time)')
-
-    const [time] = pgTime.split('.')
-    if (!time) throw new Error('Invalid timestamp format (invalid time)')
-
-    const [h, m, s] = time.split(':')
-    if (!h || !m || !s) throw new Error('Invalid timestamp format (invalid time)')
-
-    const parsed = Date.parse(`${pgDate}T${h.padStart(2, '0')}:${m}:${s}Z`)
-    if (Number.isNaN(parsed)) throw new Error('Invalid timestamp format (could not parse)')
-
-    return Math.floor(parsed / 1000)
-  }),
-  chain: z.number(),
+  block_timestamp: z.transform((value: string) => Math.floor(new Date(value).getTime() / 1000)),
+  call_count: z.number(),
+  calls: z.unknown(),
+  contract_address: z.templateLiteral(['0x', z.string()]),
+  cumulative_gas_used: z.transform((value: number) => BigInt(value)),
   data: z.templateLiteral(['0x', z.string()]),
+  effective_gas_price: z.transform((value: string) => BigInt(value)),
   extra_data: z.templateLiteral(['0x', z.string()]),
+  fee_payer: z.templateLiteral(['0x', z.string()]),
+  fee_token: z.templateLiteral(['0x', z.string()]),
   from: z.templateLiteral(['0x', z.string()]),
-  gas: z.transform((value: string) => BigInt(value)),
-  gas_limit: z.bigint(),
-  gas_price: z.transform((value: string) => BigInt(value)),
-  gas_used: z.bigint(),
+  gas_limit: z.transform((value: number) => BigInt(value)),
+  gas_used: z.transform((value: number) => BigInt(value)),
   hash: z.templateLiteral(['0x', z.string()]),
   idx: z.number(),
   input: z.templateLiteral(['0x', z.string()]),
   log_idx: z.number(),
+  max_fee_per_gas: z.transform((value: string) => BigInt(value)),
+  max_priority_fee_per_gas: z.transform((value: string) => BigInt(value)),
   miner: z.templateLiteral(['0x', z.string()]),
-  nonce: z.transform((value: string) => BigInt(value)),
-  num: z.bigint(),
-  receipts_root: z.templateLiteral(['0x', z.string()]),
-  size: z.number(),
-  state_root: z.templateLiteral(['0x', z.string()]),
-  timestamp: z.number(),
+  nonce: z.transform((value: number) => BigInt(value)),
+  nonce_key: z.templateLiteral(['0x', z.string()]),
+  num: z.transform((value: number) => BigInt(value)),
+  parent_hash: z.templateLiteral(['0x', z.string()]),
+  selector: z.templateLiteral(['0x', z.string()]),
+  signature_type: z.number(),
+  status: z.number(),
+  timestamp: z.transform((value: string) => Math.floor(new Date(value).getTime() / 1000)),
+  timestamp_ms: z.transform((value: number) => BigInt(value)),
   to: z.templateLiteral(['0x', z.string()]),
-  topics: z.array(z.templateLiteral(['0x', z.string()])),
+  topic0: z.templateLiteral(['0x', z.string()]),
+  topic1: z.templateLiteral(['0x', z.string()]),
+  topic2: z.templateLiteral(['0x', z.string()]),
+  topic3: z.templateLiteral(['0x', z.string()]),
   tx_hash: z.templateLiteral(['0x', z.string()]),
+  tx_idx: z.number(),
   type: z.number(),
+  valid_after: z.transform((value: number) => BigInt(value)),
+  valid_before: z.transform((value: number) => BigInt(value)),
   value: z.transform((value: string) => BigInt(value)),
 }
 
-const standardTables = ['txs', 'logs', 'blocks']
+const standardTables = ['txs', 'logs', 'blocks', 'receipts']
 
 /** Extracts the table name from the SQL query. */
 function extractTableName(query: string): string | null {
@@ -116,9 +119,9 @@ function getColumnTableName({ name, query }: { name: string; query: string }): s
 
 /** Parses the raw result into a structured result. */
 export function parse<
-  const sql extends string = string,
+  const query extends string = string,
   const signatures extends readonly Signature[] | undefined = undefined,
->(raw: Raw, options: parse.Options<sql, signatures>): Result<sql, signatures> {
+>(raw: Raw, options: parse.Options<query, signatures>): Result<query, signatures> {
   const { query, signatures } = options
 
   const rows: Record<string, unknown>[] = []
@@ -167,7 +170,7 @@ export function parse<
       if (!row_raw) continue
       if (!column) continue
 
-      const { name } = column
+      const name = column
       const tableName = getColumnTableName({ name, query }) ?? sourceTableName
 
       const value = (() => {
@@ -184,6 +187,7 @@ export function parse<
           )
         })()
         if (!type) return value
+        if (value === null || value === undefined) return value
 
         return type.parse(value)
       })()
@@ -194,17 +198,16 @@ export function parse<
   }
 
   return {
-    cursor: raw.cursor,
     rows,
   }
 }
 
 export declare namespace parse {
   export type Options<
-    sql extends string = string,
+    query extends string = string,
     signatures extends readonly Signature[] | undefined = undefined,
   > = {
-    query: sql | string
+    query: query | string
     signatures?: signatures | readonly string[] | undefined
   }
 }
@@ -336,7 +339,7 @@ type BuildTypeMapFromSignatures<
   : acc
 
 /**
- * Infer type based on Index Supply column types.
+ * Infer type based on tidx column types.
  */
 type InferColumnType<
   columnName extends string,
@@ -347,12 +350,9 @@ type InferColumnType<
       ? TypeMap[columnName] extends AbiType
         ? AbiParameterToPrimitiveType<{ type: TypeMap[columnName] }>
         : string
-      : // Fallback to database schema types
-        columnName extends 'topics'
-        ? string[]
-        : columnName extends keyof StandardColumnTypes
-          ? StandardColumnTypes[columnName]
-          : string
+      : columnName extends keyof StandardColumnTypes
+        ? StandardColumnTypes[columnName]
+        : string
     : string
   : signature extends string
     ? ParseAbiItem<signature> extends infer Event
@@ -363,22 +363,16 @@ type InferColumnType<
               ? TypeMap[columnName] extends AbiType
                 ? AbiParameterToPrimitiveType<{ type: TypeMap[columnName] }>
                 : string
-              : // Fallback to database schema types
-                columnName extends 'topics'
-                ? string[]
-                : columnName extends keyof StandardColumnTypes
-                  ? StandardColumnTypes[columnName]
-                  : string
+              : columnName extends keyof StandardColumnTypes
+                ? StandardColumnTypes[columnName]
+                : string
             : string
           : string
         : string
       : string
-    : // Array types (bytea[]) from database schema
-      columnName extends 'topics'
-      ? Hex.Hex[]
-      : columnName extends keyof StandardColumnTypes
-        ? StandardColumnTypes[columnName]
-        : string
+    : columnName extends keyof StandardColumnTypes
+      ? StandardColumnTypes[columnName]
+      : string
 
 /**
  * Parses a single column expression into { name, type }
@@ -430,9 +424,9 @@ type ExtractTableName<sql extends string> =
     : never
 
 /**
- * Checks if the table is a standard Index Supply table
+ * Checks if the table is a standard tidx table
  */
-type IsStandardTable<table extends string> = table extends 'blocks' | 'txs' | 'logs' ? true : false
+type IsStandardTable<table extends string> = table extends 'blocks' | 'txs' | 'logs' | 'receipts' ? true : false
 
 /**
  * Processes the columns into a row type

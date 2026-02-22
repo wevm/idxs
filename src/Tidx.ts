@@ -2,15 +2,17 @@ import * as Errors from 'ox/Errors'
 import * as Emitter from './internal/emitter.js'
 import * as Result from './internal/result.js'
 
-export type IS = {
-  /** The base URL of the Index Supply API. */
+export type Tidx = {
+  /** The base URL of the tidx API. */
   baseUrl: string
+  /** The chain ID to query. */
+  chainId: number | undefined
   /**
-   * Fetches data from the Index Supply API.
+   * Fetches data from the tidx API.
    *
    * @example
    * ```ts
-   * const result = await is.fetch({
+   * const result = await tidx.fetch({
    *   query: 'select hash, "from", "to", value from txs limit 10',
    * })
    * console.log(result.rows)
@@ -19,7 +21,7 @@ export type IS = {
    * @example
    * ```ts
    * // With event signatures for custom tables
-   * const result = await is.fetch({
+   * const result = await tidx.fetch({
    *   query: 'select "from", "to", value from transfer limit 10',
    *   signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
    * })
@@ -29,17 +31,18 @@ export type IS = {
    * @returns The result of the operation.
    */
   fetch: <
-    const sql extends string = string,
+    const query extends string = string,
     const signatures extends readonly Signature[] | undefined = undefined,
   >(
-    options: IS.fetch.Options<sql, signatures>,
-  ) => Promise<IS.fetch.ReturnValue<sql, signatures>>
+    options: Tidx.fetch.Options<query, signatures>,
+  ) => Promise<Tidx.fetch.ReturnValue<query, signatures>>
   /**
-   * Subscribes to live data updates from the Index Supply API via Server-Sent Events.
+   * Subscribes to live data updates from the tidx API via Server-Sent Events.
    *
    * @example
    * ```ts
-   * for await (const result of is.live({
+   * for await (const result of tidx.live({
+   *   chainId: 42431,
    *   query: 'select hash, "from", "to", value from txs limit 10',
    * }))
    *   console.log(result.rows)
@@ -49,58 +52,57 @@ export type IS = {
    * @returns An iterable AsyncGenerator.
    */
   live: <
-    sql extends string = string,
+    query extends string = string,
     signatures extends readonly Signature[] | undefined = undefined,
   >(
-    options: IS.live.Options<sql, signatures>,
-  ) => AsyncGenerator<IS.fetch.ReturnValue<sql, signatures>, void, unknown>
+    options: Tidx.live.Options<query, signatures>,
+  ) => AsyncGenerator<Tidx.fetch.ReturnValue<query, signatures>, void, unknown>
   /**
-   * Registers an event listener to listen for events from the Index Supply instance.
+   * Registers an event listener to listen for events from the tidx instance.
    *
    * @example
    * ```ts
-   * is.on('*', (event, data) => console.log(event, data))
-   * is.on('request', (request) => console.log('Request:', request.url))
-   * is.on('response', (response) => console.log('Response:', response.status))
-   * is.on('error', (error) => console.error('Error:', error.message))
+   * tidx.on('*', (event, data) => console.log(event, data))
+   * tidx.on('request', (request) => console.log('Request:', request.url))
+   * tidx.on('response', (response) => console.log('Response:', response.status))
+   * tidx.on('error', (error) => console.error('Error:', error.message))
    * ```
    */
   on: Emitter.Emitter['on']
   off: Emitter.Emitter['off']
 }
 
-/** Cursor type for pagination. Can be a string or an object with `chainId` and `blockNumber`. */
-export type Cursor = string | { chainId: number; blockNumber: number | bigint }
-
 /** Stringified signature of a function or event. */
 export type Signature = Result.Signature
 
-export declare namespace IS {
+export declare namespace Tidx {
   export namespace fetch {
     /**
      * Options for the `fetch` method.
      */
     export type Options<
-      sql extends string = string,
+      query extends string = string,
       signatures extends readonly Signature[] | undefined = undefined,
     > = RequestInit & {
-      /** Optional cursor for pagination. */
-      cursor?: Cursor | undefined
+      /** Chain ID to query. Overrides the client-level `chainId` if set. */
+      chainId?: number | undefined
+      /** Query engine to use (e.g. `'clickhouse'` for OLAP queries). */
+      engine?: string | undefined
+      /** SQL query to execute. */
+      query: query | string
       /** Optional number of retry attempts on failure. Defaults to 5. */
       retryCount?: number | undefined
       /** Optional array of event/function signatures for custom tables. */
       signatures?: signatures | readonly Signature[] | undefined
-      /** SQL query to execute. */
-      query: sql | string
     }
 
     /**
      * Return value of the `fetch` method.
      */
     export type ReturnValue<
-      sql extends string = string,
+      query extends string = string,
       signatures extends readonly Signature[] | undefined = undefined,
-    > = Result.Result<sql, signatures>
+    > = Result.Result<query, signatures>
 
     /**
      * Error types that can be thrown by the `fetch` method.
@@ -113,9 +115,9 @@ export declare namespace IS {
      * Options for the `live` method.
      */
     export type Options<
-      sql extends string = string,
+      query extends string = string,
       signatures extends readonly Signature[] | undefined = undefined,
-    > = fetch.Options<sql, signatures>
+    > = fetch.Options<query, signatures>
 
     /**
      * Error types that can be thrown by the `live` method.
@@ -130,51 +132,60 @@ export declare namespace IS {
 }
 
 /**
- * Creates an Index Supply client instance.
+ * Creates a tidx client instance.
  *
  * @param options - Configuration options for the client.
- * @returns An Index Supply client instance.
+ * @returns A tidx client instance.
  *
  * @example
  * ```ts
- * import { IndexSupply } from 'idxs'
+ * import { Tidx } from 'tidx'
  *
  * // Create with default options
- * const is = IndexSupply.create()
+ * const tidx = Tidx.create()
  *
  * // Create with API key
- * const is = IndexSupply.create({ apiKey: 'your-api-key' })
+ * const tidx = Tidx.create({ basicAuth: 'your-api-key' })
  *
  * // Create with custom base URL
- * const is = IndexSupply.create({
- *   apiKey: 'your-api-key',
+ * const tidx = Tidx.create({
+ *   basicAuth: 'your-api-key',
  *   baseUrl: 'https://custom-api.example.com',
  * })
  * ```
  */
-export function create(options: create.Options = {}): create.ReturnValue {
-  const { apiKey, baseUrl = 'https://api.indexsupply.net/v2' } = options
+export function create(options: create.Options): create.ReturnValue {
+  const { basicAuth, baseUrl = 'https://tidx.tempo.xyz', chainId } = options
 
   const emitter = Emitter.create()
 
   return {
     baseUrl,
+    chainId,
 
     on: emitter.on.bind(emitter) as never,
     off: emitter.off.bind(emitter) as never,
 
     async fetch(options) {
-      const { cursor, signatures, query, retryCount = 5, ...requestInit } = options
+      const {
+        chainId: chainId_ = chainId,
+        engine,
+        signatures,
+        query,
+        retryCount = 5,
+        ...requestInit
+      } = options
 
       const { emit } = emitter.instance()
 
       const url = new URL(`${baseUrl}/query`)
-
-      const requestBody: { cursor?: string; query: string; signatures?: string[] } = { query }
-      if (cursor !== undefined)
-        requestBody.cursor =
-          typeof cursor === 'string' ? cursor : `${cursor.chainId}-${cursor.blockNumber.toString()}`
-      if (signatures !== undefined) requestBody.signatures = signatures as string[]
+      url.searchParams.set('sql', query)
+      url.searchParams.set('chainId', String(chainId_))
+      if (engine) url.searchParams.set('engine', engine)
+      if (signatures) {
+        for (const sig of signatures)
+          url.searchParams.append('signature', sig.replace(/^(event|function)\s+/i, ''))
+      }
 
       let count = 0
       let lastError: Error | undefined
@@ -185,12 +196,10 @@ export function create(options: create.Options = {}): create.ReturnValue {
         try {
           const request = new Request(url, {
             ...requestInit,
-            body: JSON.stringify([requestBody]),
+            method: 'GET',
             headers: {
-              'Content-Type': 'application/json',
-              ...(apiKey ? { 'Api-Key': apiKey } : {}),
+              ...(basicAuth ? { Authorization: `Basic ${btoa(basicAuth)}` } : {}),
             },
-            method: 'POST',
           })
 
           emit('request', request.clone())
@@ -211,11 +220,11 @@ export function create(options: create.Options = {}): create.ReturnValue {
             throw new FetchRequestError(message, response)
           }
 
-          const [result] = (await response.json()) as [Result.Raw]
-          if (!result) throw new Errors.BaseError('No results returned')
+          const result = (await response.json()) as Result.Raw
+          if (!result.ok) throw new FetchRequestError(result.error || 'Request failed', response)
           return Result.parse(result, { query, signatures }) as never
         } catch (e) {
-          const error = e as IS.fetch.ErrorType
+          const error = e as Tidx.fetch.ErrorType
 
           emit('error', error)
 
@@ -235,7 +244,15 @@ export function create(options: create.Options = {}): create.ReturnValue {
     },
 
     async *live(options) {
-      const { cursor, signatures, query, retryCount = 50, signal, ...requestInit } = options
+      const {
+        chainId: chainId_ = chainId,
+        engine,
+        signatures,
+        query,
+        retryCount = 50,
+        signal,
+        ...requestInit
+      } = options
 
       const { emit } = emitter.instance()
 
@@ -251,27 +268,22 @@ export function create(options: create.Options = {}): create.ReturnValue {
         count++
 
         try {
-          const url = new URL(`${baseUrl}/query-live`)
-
-          const params = new URLSearchParams()
-          if (cursor)
-            params.set(
-              'cursor',
-              typeof cursor === 'string'
-                ? cursor
-                : `${cursor.chainId}-${cursor.blockNumber.toString()}`,
-            )
-          if (signatures) for (const sig of signatures) params.append('signatures', sig)
-          params.set('query', query)
-
-          url.search = params.toString()
+          const url = new URL(`${baseUrl}/query`)
+          url.searchParams.set('sql', query)
+          url.searchParams.set('chainId', String(chainId_))
+          url.searchParams.set('live', 'true')
+          if (engine) url.searchParams.set('engine', engine)
+          if (signatures) {
+            for (const sig of signatures)
+              url.searchParams.append('signature', sig.replace(/^(event|function)\s+/i, ''))
+          }
 
           const request = new Request(url, {
             ...requestInit,
             ...(signal ? { signal } : {}),
             method: 'GET',
             headers: {
-              ...(apiKey ? { 'Api-Key': apiKey } : {}),
+              ...(basicAuth ? { Authorization: `Basic ${btoa(basicAuth)}` } : {}),
             },
           })
 
@@ -305,9 +317,16 @@ export function create(options: create.Options = {}): create.ReturnValue {
                 error: 'server'
                 message: string
               }
-          for await (const data of readStream<IS.Result[] | Error>(reader)) {
-            if ('error' in data) throw new SseError(data.message, { type: data.error })
-            for (const item of data) yield item
+          for await (const data of readStream<Result.Raw | Error>(reader)) {
+            if (
+              'error' in data &&
+              typeof data.error === 'string' &&
+              (data.error === 'client' || data.error === 'server')
+            )
+              throw new SseError((data as Error).message, { type: (data as Error).error })
+            const raw = data as Result.Raw
+            if (!raw.ok) throw new SseError(raw.error || 'Request failed', { type: 'server' })
+            yield Result.parse(raw, { query, signatures }) as never
             count = 0
           }
 
@@ -315,7 +334,7 @@ export function create(options: create.Options = {}): create.ReturnValue {
         } catch (e) {
           if (shouldAbort) return
 
-          const error = e as IS.live.ErrorType
+          const error = e as Tidx.live.ErrorType
 
           emit('error', error)
 
@@ -338,30 +357,32 @@ export function create(options: create.Options = {}): create.ReturnValue {
 
 export declare namespace create {
   /**
-   * Options for creating an Index Supply client.
+   * Options for creating a tidx client.
    */
   export type Options = {
-    /** Index Supply API key for authentication. */
-    apiKey?: string | undefined
-    /** Index Supply API base URL. Defaults to `'https://api.indexsupply.net/v2'`. */
+    /** Basic auth credentials. */
+    basicAuth?: string | undefined
+    /** tidx API base URL. Defaults to `'https://tidx.tempo.xyz'`. */
     baseUrl?: string | undefined
+    /** Chain ID to query. Can also be set per-call via `fetch`/`live` options. */
+    chainId?: number | undefined
   }
 
   /**
    * Return type of the `create` function.
    */
-  export type ReturnValue = IS
+  export type ReturnValue = Tidx
 }
 
 /**
- * Error thrown when a fetch request to the Index Supply API fails.
+ * Error thrown when a fetch request to the tidx API fails.
  *
  * @example
  * ```ts
  * try {
- *   await is.fetch({ query: 'invalid query' })
+ *   await tidx.fetch({ chainId: 42431, query: 'invalid query' })
  * } catch (error) {
- *   if (error instanceof IndexSupply.FetchRequestError) {
+ *   if (error instanceof Tidx.FetchRequestError) {
  *     console.error('Request failed:', error.message)
  *     console.error('Status:', error.status)
  *   }
@@ -369,7 +390,7 @@ export declare namespace create {
  * ```
  */
 export class FetchRequestError extends Errors.BaseError {
-  override readonly name = 'IndexSupply.FetchRequestError'
+  override readonly name = 'Tidx.FetchRequestError'
 
   /** The HTTP response object. */
   response: Response
@@ -398,11 +419,11 @@ export class FetchRequestError extends Errors.BaseError {
  * @example
  * ```ts
  * try {
- *   for await (const result of is.live({ query: 'select * from txs' })) {
+ *   for await (const result of tidx.live({ chainId: 42431, query: 'select * from txs' })) {
  *     console.log(result)
  *   }
  * } catch (error) {
- *   if (error instanceof IndexSupply.SseError) {
+ *   if (error instanceof Tidx.SseError) {
  *     console.error('SSE error:', error.message)
  *     console.error('Error type:', error.type) // 'client' or 'server'
  *   }
@@ -410,7 +431,7 @@ export class FetchRequestError extends Errors.BaseError {
  * ```
  */
 export class SseError extends Errors.BaseError<Error | undefined> {
-  override readonly name = 'IndexSupply.SseError'
+  override readonly name = 'Tidx.SseError'
 
   /** The type of error: 'client' for client-side errors, 'server' for server-side errors. */
   type: 'client' | 'server'

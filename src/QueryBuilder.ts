@@ -13,127 +13,161 @@ import type {
   QueryResult,
 } from 'kysely'
 import { Kysely, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler } from 'kysely'
-import type * as IS from './IndexSupply.js'
+import type * as Tidx from './Tidx.js'
 import type { StandardColumnTypes } from './internal/result.js'
 
 declare module 'kysely' {
   // @ts-expect-error
   interface SelectQueryBuilder<O> {
-    execute(): Promise<O[] & { cursor: string }>
+    execute(): Promise<O[]>
   }
 }
 
 /**
- * Standard Index Supply EVM tables.
+ * Standard tidx EVM tables.
  */
 export namespace Tables {
   /** Blocks table containing blockchain block data. */
   export type Blocks = {
-    /** Chain ID. */
-    chain: StandardColumnTypes['chain']
     /** Block number. */
     num: StandardColumnTypes['block_num']
+    /** Block hash. */
+    hash: StandardColumnTypes['hash']
+    /** Parent block hash. */
+    parent_hash: StandardColumnTypes['parent_hash']
     /** Block timestamp. */
     timestamp: StandardColumnTypes['block_timestamp']
-    /** Block size in bytes. */
-    size: StandardColumnTypes['size']
+    /** Block timestamp in milliseconds. */
+    timestamp_ms: StandardColumnTypes['timestamp_ms']
     /** Gas limit for the block. */
     gas_limit: StandardColumnTypes['gas_limit']
     /** Gas used in the block. */
     gas_used: StandardColumnTypes['gas_used']
-    /** Block nonce. */
-    nonce: StandardColumnTypes['nonce']
-    /** Block hash. */
-    hash: StandardColumnTypes['hash']
-    /** Receipts root hash. */
-    receipts_root: StandardColumnTypes['receipts_root']
-    /** State root hash. */
-    state_root: StandardColumnTypes['state_root']
-    /** Extra data. */
-    extra_data: StandardColumnTypes['extra_data']
     /** Miner address. */
     miner: StandardColumnTypes['miner']
+    /** Extra data. */
+    extra_data: StandardColumnTypes['extra_data']
   }
 
   /** Transactions table containing transaction data. */
   export type Txs = {
-    /** Chain ID. */
-    chain: StandardColumnTypes['chain']
     /** Block number. */
     block_num: StandardColumnTypes['block_num']
     /** Block timestamp. */
     block_timestamp: StandardColumnTypes['block_timestamp']
     /** Transaction index in block. */
     idx: StandardColumnTypes['idx']
-    /** Transaction type. */
-    type: StandardColumnTypes['type']
-    /** Gas limit. */
-    gas: StandardColumnTypes['gas']
-    /** Gas price. */
-    gas_price: StandardColumnTypes['gas_price']
-    /** Transaction nonce. */
-    nonce: StandardColumnTypes['nonce']
     /** Transaction hash. */
     hash: StandardColumnTypes['hash']
+    /** Transaction type. */
+    type: StandardColumnTypes['type']
     /** Sender address. */
     from: StandardColumnTypes['from']
     /** Recipient address. */
     to: StandardColumnTypes['to']
-    /** Transaction input data. */
-    input: StandardColumnTypes['input']
     /** Transaction value. */
     value: StandardColumnTypes['value']
+    /** Transaction input data. */
+    input: StandardColumnTypes['input']
+    /** Gas limit. */
+    gas_limit: StandardColumnTypes['gas_limit']
+    /** Max fee per gas. */
+    max_fee_per_gas: StandardColumnTypes['max_fee_per_gas']
+    /** Max priority fee per gas. */
+    max_priority_fee_per_gas: StandardColumnTypes['max_priority_fee_per_gas']
+    /** Gas used. */
+    gas_used: StandardColumnTypes['gas_used']
+    /** Nonce key. */
+    nonce_key: StandardColumnTypes['nonce_key']
+    /** Transaction nonce. */
+    nonce: StandardColumnTypes['nonce']
+    /** Fee token address. */
+    fee_token: StandardColumnTypes['fee_token']
+    /** Fee payer address. */
+    fee_payer: StandardColumnTypes['fee_payer']
+    /** Internal calls. */
+    calls: StandardColumnTypes['calls']
+    /** Number of internal calls. */
+    call_count: StandardColumnTypes['call_count']
+    /** Valid before timestamp. */
+    valid_before: StandardColumnTypes['valid_before']
+    /** Valid after timestamp. */
+    valid_after: StandardColumnTypes['valid_after']
+    /** Signature type. */
+    signature_type: StandardColumnTypes['signature_type']
   }
 
   /** Logs table containing event log data. */
   export type Logs = {
-    /** Chain ID. */
-    chain: StandardColumnTypes['chain']
     /** Block number. */
     block_num: StandardColumnTypes['block_num']
     /** Block timestamp. */
     block_timestamp: StandardColumnTypes['block_timestamp']
     /** Log index in block. */
     log_idx: StandardColumnTypes['log_idx']
+    /** Transaction index in block. */
+    tx_idx: StandardColumnTypes['tx_idx']
     /** Transaction hash. */
     tx_hash: StandardColumnTypes['tx_hash']
     /** Contract address that emitted the log. */
     address: StandardColumnTypes['address']
-    /** Event topics (indexed parameters). */
-    topics: StandardColumnTypes['topics']
+    /** Event selector. */
+    selector: StandardColumnTypes['selector']
+    /** Topic 0. */
+    topic0: StandardColumnTypes['topic0']
+    /** Topic 1. */
+    topic1: StandardColumnTypes['topic1']
+    /** Topic 2. */
+    topic2: StandardColumnTypes['topic2']
+    /** Topic 3. */
+    topic3: StandardColumnTypes['topic3']
     /** Event data (non-indexed parameters). */
     data: StandardColumnTypes['data']
+  }
+
+  /** Receipts table containing transaction receipt data. */
+  export type Receipts = {
+    /** Block number. */
+    block_num: StandardColumnTypes['block_num']
+    /** Block timestamp. */
+    block_timestamp: StandardColumnTypes['block_timestamp']
+    /** Transaction index in block. */
+    tx_idx: StandardColumnTypes['tx_idx']
+    /** Transaction hash. */
+    tx_hash: StandardColumnTypes['tx_hash']
+    /** Sender address. */
+    from: StandardColumnTypes['from']
+    /** Recipient address. */
+    to: StandardColumnTypes['to']
+    /** Contract address created. */
+    contract_address: StandardColumnTypes['contract_address']
+    /** Gas used. */
+    gas_used: StandardColumnTypes['gas_used']
+    /** Cumulative gas used. */
+    cumulative_gas_used: StandardColumnTypes['cumulative_gas_used']
+    /** Effective gas price. */
+    effective_gas_price: StandardColumnTypes['effective_gas_price']
+    /** Transaction status. */
+    status: StandardColumnTypes['status']
+    /** Fee payer address. */
+    fee_payer: StandardColumnTypes['fee_payer']
   }
 }
 
 /**
- * Database schema type containing all standard Index Supply tables.
+ * Database schema type containing all standard tidx tables.
  */
 export type Database = {
   blocks: Tables.Blocks
   txs: Tables.Txs
   logs: Tables.Logs
+  receipts: Tables.Receipts
 }
 
 export type QueryBuilder<rootAbi extends Abi | undefined = undefined> = Kysely<
   // biome-ignore lint/complexity/noBannedTypes: _
   Database & (rootAbi extends Abi ? AbiToDatabase<rootAbi> : {})
 > & {
-  /**
-   * Sets the cursor position for pagination.
-   *
-   * @example
-   * ```ts
-   * const qb = QueryBuilder.from(is).atCursor('1-12345')
-   *
-   * // Or with object notation
-   * const qb = QueryBuilder.from(is).atCursor({ chainId: 1, blockNumber: 12345 })
-   * ```
-   *
-   * @param cursor - The cursor to start from.
-   * @returns A new QueryBuilder instance with the cursor set.
-   */
-  atCursor: (cursor: QueryBuilder.Cursor) => Omit<QueryBuilder<rootAbi>, 'cursor'>
   /**
    * Adds ABI definitions to enable querying custom event/function tables.
    *
@@ -143,7 +177,7 @@ export type QueryBuilder<rootAbi extends Abi | undefined = undefined> = Kysely<
    * @example
    * ```ts
    * const abi = [{ type: 'event', name: 'Transfer', inputs: [...] }] as const
-   * const qb = QueryBuilder.from(is).withAbi(abi)
+   * const qb = QueryBuilder.from(tidx).withAbi(abi)
    * ```
    */
   withAbi: <const abi extends Abi>(
@@ -157,7 +191,7 @@ export type QueryBuilder<rootAbi extends Abi | undefined = undefined> = Kysely<
    *
    * @example
    * ```ts
-   * const qb = QueryBuilder.from(is).withSignatures([
+   * const qb = QueryBuilder.from(tidx).withSignatures([
    *   'event Transfer(address indexed from, address indexed to, uint256 value)',
    *   'event Approval(address indexed owner, address indexed spender, uint256 value)',
    * ])
@@ -175,31 +209,24 @@ export type QueryBuilder<rootAbi extends Abi | undefined = undefined> = Kysely<
   >
 }
 
-export declare namespace QueryBuilder {
-  /** Cursor type for pagination. Can be a string or an object with `chainId` and `blockNumber`. */
-  export type Cursor = IS.Cursor
-}
-
 /**
- * Creates a [Kysely-based](https://kysely.dev) QueryBuilder instance from an Index Supply client.
+ * Creates a [Kysely-based](https://kysely.dev) QueryBuilder instance from a tidx client.
  *
  * @example
  * ```ts
- * import { IndexSupply, QueryBuilder } from 'idxs'
+ * import { Tidx, QueryBuilder } from 'tidx'
  *
- * const is = IndexSupply.create({ apiKey: 'your-api-key' })
- * const qb = QueryBuilder.from(is)
+ * const tidx = Tidx.create({ basicAuth: 'your-api-key', chainId: 1 })
+ * const qb = QueryBuilder.from(tidx)
  *
  * // Query transactions
  * const txs = await qb
  *   .selectFrom('txs')
  *   .select(['hash', 'from', 'to', 'value'])
- *   .where('chain', '=', 1)
  *   .limit(10)
  *   .execute()
  *
  * console.log(txs) // [{ hash: '0x...', from: '0x...', to: '0x...', value: '...' }, ...]
- * console.log(txs.cursor) // '1-12345678'
  * ```
  *
  * @example
@@ -209,56 +236,29 @@ export declare namespace QueryBuilder {
  *   .withSignatures(['event Transfer(address indexed from, address indexed to, uint256 value)'])
  *   .selectFrom('transfer')
  *   .select(['from', 'to', 'value'])
- *   .where('chain', '=', 1)
  *   .limit(100)
  *   .execute()
  * ```
  *
- * @example
- * ```ts
- * // Pagination with cursor
- *
- * let qb = QueryBuilder.from(is)
- *
- * let cursor: string | undefined
- * while (true) {
- *   if (cursor) qb = qb.atCursor(cursor)
- *   const txs = await qb.selectFrom('txs').select(['hash']).limit(100).execute()
- *   if (txs.length === 0) break
- *   cursor = txs.cursor
- *   // Process txs...
- * }
- * ```
- *
- * @param options - The Index Supply client instance (must have `fetch` and `live` methods).
+ * @param options - Options including the tidx client (`fetch` and `live` methods) and `chainId`.
  * @returns A new Kysely-based QueryBuilder instance.
  */
 export function from(options: from.Options): QueryBuilder {
-  let cursor: QueryBuilder.Cursor | undefined
   const signatures: string[] = []
 
-  function inner(
-    o: {
-      cursor?: QueryBuilder.Cursor | undefined
-      signatures?: readonly string[] | undefined
-    } = {},
-  ) {
-    cursor ??= o.cursor
+  function inner(o: { signatures?: readonly string[] | undefined } = {}) {
     signatures.push(...(o.signatures ?? []))
 
     const kysely = new Kysely({
       dialect: {
         createAdapter: () => new PostgresAdapter(),
-        createDriver: () => new Driver({ ...options, cursor, signatures }),
+        createDriver: () => new Driver({ ...options, signatures }),
         createIntrospector: (db) => new PostgresIntrospector(db),
         createQueryCompiler: () => new PostgresQueryCompiler(),
       },
     })
 
     return {
-      atCursor(cursor: QueryBuilder.Cursor) {
-        return inner({ cursor }) as never
-      },
       selectFrom: kysely.selectFrom.bind(kysely),
       withAbi(abi: Abi) {
         return inner({ signatures: formatAbi(abi) }) as never
@@ -274,7 +274,10 @@ export function from(options: from.Options): QueryBuilder {
 
 export namespace from {
   /** Options for creating a QueryBuilder. */
-  export type Options = Pick<IS.IS, 'fetch' | 'live'>
+  export type Options = Pick<Tidx.Tidx, 'fetch' | 'live'> & {
+    chainId?: number | undefined
+    engine?: string | undefined
+  }
 
   /** Return type of the `from` function. */
   export type ReturnValue = QueryBuilder
@@ -284,7 +287,6 @@ export namespace from {
 class Driver implements kysely_Driver {
   constructor(
     private options: from.Options & {
-      cursor?: QueryBuilder.Cursor | undefined
       signatures?: string[] | undefined
     },
   ) {}
@@ -322,7 +324,6 @@ class Driver implements kysely_Driver {
 class Connection implements DatabaseConnection {
   constructor(
     private options: from.Options & {
-      cursor?: QueryBuilder.Cursor | undefined
       signatures?: string[] | undefined
     },
   ) {}
@@ -331,9 +332,10 @@ class Connection implements DatabaseConnection {
     const { query, signatures } = this.prepareQuery(compiledQuery)
 
     const result = await this.options.fetch({
-      cursor: this.options.cursor,
+      chainId: this.options.chainId,
+      engine: this.options.engine,
       query,
-      signatures: signatures as readonly IS.Signature[],
+      signatures: signatures as readonly Tidx.Signature[],
     })
 
     return this.parseResult(result)
@@ -344,24 +346,18 @@ class Connection implements DatabaseConnection {
 
     // Use the live streaming endpoint
     for await (const result of this.options.live({
-      cursor: this.options.cursor,
+      chainId: this.options.chainId,
+      engine: this.options.engine,
       query,
-      signatures: signatures as readonly IS.Signature[],
+      signatures: signatures as readonly Tidx.Signature[],
     }))
       yield this.parseResult<row>(result)
   }
 
   parseResult<row>(
-    result: IS.IS.fetch.ReturnValue<string, readonly IS.Signature[]>,
+    result: Tidx.Tidx.fetch.ReturnValue<string, readonly Tidx.Signature[]>,
   ): QueryResult<row> {
     const rows = result.rows
-
-    Object.defineProperty(rows, 'cursor', {
-      value: result.cursor,
-      enumerable: false,
-      writable: false,
-    })
-
     return { rows } as unknown as QueryResult<row>
   }
 
@@ -370,7 +366,9 @@ class Connection implements DatabaseConnection {
 
     for (let i = compiledQuery.parameters.length - 1; i >= 0; i--) {
       const placeholder = `$${i + 1}`
-      query = query.replaceAll(placeholder, String(compiledQuery.parameters[i]))
+      const param = compiledQuery.parameters[i]
+      const value = typeof param === 'string' ? `'${param}'` : String(param)
+      query = query.replaceAll(placeholder, value)
     }
 
     const signatures: string[] = []

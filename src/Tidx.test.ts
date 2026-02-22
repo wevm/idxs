@@ -1,27 +1,29 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import * as IS from './IndexSupply.js'
+import * as Tidx from './Tidx.js'
 
-const is = IS.create({
-  apiKey: process.env.VITE_API_KEY,
+const tidx = Tidx.create({
+  basicAuth: process.env.VITE_API_CREDENTIALS,
+  chainId: 42431,
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
   // Clear all event handlers to prevent accumulation across tests
-  is.off('error')
-  is.off('request')
-  is.off('response')
-  is.off('log')
-  is.off('*')
+  tidx.off('error')
+  tidx.off('request')
+  tidx.off('response')
+  tidx.off('log')
+  tidx.off('*')
 })
 
 describe('create', () => {
   test('default', async () => {
-    const is = IS.create()
+    const tidx = Tidx.create({ chainId: 42431 })
 
-    expect(is).toMatchInlineSnapshot(`
+    expect(tidx).toMatchInlineSnapshot(`
       {
-        "baseUrl": "https://api.indexsupply.net/v2",
+        "baseUrl": "https://tidx.tempo.xyz",
+        "chainId": 42431,
         "fetch": [Function],
         "live": [Function],
         "off": [Function],
@@ -31,12 +33,14 @@ describe('create', () => {
   })
 
   test('creates indexer with custom baseUrl', () => {
-    const is = IS.create({
-      baseUrl: 'https://api.indexsupply.net/v2',
+    const tidx = Tidx.create({
+      baseUrl: 'https://tidx.tempo.xyz',
+      chainId: 42431,
     })
-    expect(is).toMatchInlineSnapshot(`
+    expect(tidx).toMatchInlineSnapshot(`
       {
-        "baseUrl": "https://api.indexsupply.net/v2",
+        "baseUrl": "https://tidx.tempo.xyz",
+        "chainId": 42431,
         "fetch": [Function],
         "live": [Function],
         "off": [Function],
@@ -47,23 +51,20 @@ describe('create', () => {
 
   describe('.fetch', () => {
     test('behavior: tx', async () => {
-      const result = await is.fetch({
-        query:
-          'select chain, block_num, block_timestamp, idx, type, gas, gas_price, nonce, hash, "from", "to", input, value from txs where chain = 8453 limit 1',
+      const result = await tidx.fetch({
+        query: 'select block_num, block_timestamp, idx, type, gas_limit, max_fee_per_gas, nonce, hash, "from", "to", input, value from txs limit 1',
       })
 
-      expect(result).toHaveProperty('cursor')
       expect(result).toHaveProperty('rows')
       expect(result.rows.length).toBeGreaterThan(0)
 
       const row = result.rows[0]
-      expect(row).toHaveProperty('chain')
       expect(row).toHaveProperty('block_num')
       expect(row).toHaveProperty('block_timestamp')
       expect(row).toHaveProperty('idx')
       expect(row).toHaveProperty('type')
-      expect(row).toHaveProperty('gas')
-      expect(row).toHaveProperty('gas_price')
+      expect(row).toHaveProperty('gas_limit')
+      expect(row).toHaveProperty('max_fee_per_gas')
       expect(row).toHaveProperty('nonce')
       expect(row).toHaveProperty('hash')
       expect(row).toHaveProperty('from')
@@ -73,66 +74,113 @@ describe('create', () => {
     })
 
     test('behavior: queries Transfer events from Base chain', async () => {
-      const result = await is.fetch({
-        query: 'select "from", "to", tokens from transfer where chain = 8453 limit 3',
+      const result = await tidx.fetch({
+        query: 'select "from", "to", tokens from transfer limit 3',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 tokens)'],
       })
 
-      expect(result).toHaveProperty('cursor')
       expect(result).toHaveProperty('rows')
-      expect(result.cursor).toMatch(/^8453-\d+$/)
       expect(result.rows.length).toBeLessThanOrEqual(3)
     })
 
-    test('behavior: uses cursor for pagination', async () => {
-      // First query
-      const first = await is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 2',
-        signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
+    test.skip('behavior: OLAP aggregation with engine=clickhouse', async () => {
+      const result = await tidx.fetch({
+        engine: 'clickhouse',
+        query: 'select count(*) count, max(block_num) max_block from txs',
       })
 
-      expect(first.cursor).toBeTruthy()
+      expect(result).toHaveProperty('rows')
+      expect(result.rows.length).toBe(1)
 
-      // Second query with cursor
-      const second = await is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 2',
-        signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-        cursor: first.cursor,
-      })
-
-      expect(second.cursor).toBeTruthy()
+      const row = result.rows[0]!
+      expect(row).toHaveProperty('count')
+      expect(row).toHaveProperty('max_block')
+      expect(Number(row.count)).toBeGreaterThan(0)
     })
 
-    test('behavior: uses object-based cursor for pagination', async () => {
-      const result = await is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 2',
-        signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-        cursor: { chainId: 8453, blockNumber: 12345678 },
+    test.skip('behavior: OLAP group by with engine=clickhouse', async () => {
+      const result = await tidx.fetch({
+        engine: 'clickhouse',
+        query: 'select type, count(*) count from txs group by type order by count desc limit 5',
       })
 
-      expect(result).toHaveProperty('cursor')
       expect(result).toHaveProperty('rows')
-      expect(result.cursor).toMatch(/^8453-\d+$/)
+      expect(result.rows.length).toBeGreaterThan(0)
+      expect(result.rows.length).toBeLessThanOrEqual(5)
+
+      for (const row of result.rows) {
+        expect(row).toHaveProperty('type')
+        expect(row).toHaveProperty('count')
+      }
     })
 
-    test('behavior: uses object-based cursor with bigint blockNumber', async () => {
-      const result = await is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 2',
-        signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-        cursor: { chainId: 8453, blockNumber: 12345678n },
+    test('behavior: engine param is set in request URL', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: true,
+              columns: ['count'],
+              rows: [[100]],
+              row_count: 1,
+            }),
+            { status: 200, statusText: 'OK' },
+          ),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
+      const requests: Request[] = []
+
+      testIndexer.on('request', (request) => {
+        requests.push(request)
       })
 
-      expect(result).toHaveProperty('cursor')
-      expect(result).toHaveProperty('rows')
-      expect(result.cursor).toMatch(/^8453-\d+$/)
+      await testIndexer.fetch({
+        engine: 'clickhouse',
+        query: 'select count(*) count from txs',
+      })
+
+      expect(requests).toHaveLength(1)
+      const url = new URL(requests[0]!.url)
+      expect(url.searchParams.get('engine')).toBe('clickhouse')
+    })
+
+    test('behavior: engine param is omitted from URL when not set', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: true,
+              columns: ['from', 'to'],
+              rows: [['0x123', '0x456']],
+              row_count: 1,
+            }),
+            { status: 200, statusText: 'OK' },
+          ),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
+      const requests: Request[] = []
+
+      testIndexer.on('request', (request) => {
+        requests.push(request)
+      })
+
+      await testIndexer.fetch({
+        query: 'select "from", "to" from txs limit 1',
+      })
+
+      expect(requests).toHaveLength(1)
+      const url = new URL(requests[0]!.url)
+      expect(url.searchParams.has('engine')).toBe(false)
     })
 
     test('behavior: forwards RequestInit options', async () => {
       const controller = new AbortController()
 
       // Start the request
-      const promise = is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+      const promise = tidx.fetch({
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         signal: controller.signal,
       })
@@ -153,11 +201,11 @@ describe('create', () => {
           }),
       )
 
-      const testIndexer = IS.create()
+      const testIndexer = Tidx.create({ chainId: 42431 })
 
       await expect(
         testIndexer.fetch({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         }),
       ).rejects.toThrow('Internal Server Error - Database connection failed')
@@ -165,31 +213,29 @@ describe('create', () => {
       expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(1)
     })
 
-    test('behavior: throws error when no results returned', async () => {
+    test('behavior: throws error when ok is false', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
         async () =>
-          new Response(JSON.stringify([]), {
+          new Response(JSON.stringify({ ok: false, error: 'Request failed' }), {
             status: 200,
             statusText: 'OK',
           }),
       )
 
-      const testIndexer = IS.create()
+      const testIndexer = Tidx.create({ chainId: 42431 })
 
       await expect(
         testIndexer.fetch({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         }),
-      ).rejects.toThrow('No results returned')
+      ).rejects.toThrow('Request failed')
 
       expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(1)
     })
 
     describe('behavior: retries', () => {
       test('behavior: retries on retryable error (500) and eventually succeeds', async () => {
-        const originalFetch = globalThis.fetch
-
         const fetchSpy = vi
           .spyOn(globalThis, 'fetch')
           .mockImplementationOnce(
@@ -206,9 +252,20 @@ describe('create', () => {
                 statusText: 'Internal Server Error',
               }),
           )
-          .mockImplementation(async (input, init) => originalFetch(input, init))
+          .mockImplementation(
+            async () =>
+              new Response(
+                JSON.stringify({
+                  ok: true,
+                  columns: ['from', 'to'],
+                  rows: [['0x123', '0x456']],
+                  row_count: 1,
+                }),
+                { status: 200, statusText: 'OK' },
+              ),
+          )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const errors: Error[] = []
 
         testIndexer.on('error', (error) => {
@@ -216,24 +273,21 @@ describe('create', () => {
         })
 
         const result = await testIndexer.fetch({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         })
 
-        expect(result).toHaveProperty('cursor')
         expect(result).toHaveProperty('rows')
         expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(3)
         // Should have emitted 2 errors before success
         expect(errors.length).toBe(2)
         for (const error of errors) {
           expect(error).toBeInstanceOf(Error)
-          expect(error.name).toBe('IndexSupply.FetchRequestError')
+          expect(error.name).toBe('Tidx.FetchRequestError')
         }
       })
 
       test('behavior: retries on 429 (rate limit) error', async () => {
-        const originalFetch = globalThis.fetch
-
         const fetchSpy = vi
           .spyOn(globalThis, 'fetch')
           .mockImplementationOnce(
@@ -243,21 +297,30 @@ describe('create', () => {
                 statusText: 'Too Many Requests',
               }),
           )
-          .mockImplementation(async (input, init) => originalFetch(input, init))
+          .mockImplementation(
+            async () =>
+              new Response(
+                JSON.stringify({
+                  ok: true,
+                  columns: ['from', 'to'],
+                  rows: [['0x123', '0x456']],
+                  row_count: 1,
+                }),
+                { status: 200, statusText: 'OK' },
+              ),
+          )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const result = await testIndexer.fetch({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         })
 
-        expect(result).toHaveProperty('cursor')
+        expect(result).toHaveProperty('rows')
         expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
       })
 
       test('behavior: retries on 408 (timeout) error', async () => {
-        const originalFetch = globalThis.fetch
-
         const fetchSpy = vi
           .spyOn(globalThis, 'fetch')
           .mockImplementationOnce(
@@ -267,15 +330,26 @@ describe('create', () => {
                 statusText: 'Request Timeout',
               }),
           )
-          .mockImplementation(async (input, init) => originalFetch(input, init))
+          .mockImplementation(
+            async () =>
+              new Response(
+                JSON.stringify({
+                  ok: true,
+                  columns: ['from', 'to'],
+                  rows: [['0x123', '0x456']],
+                  row_count: 1,
+                }),
+                { status: 200, statusText: 'OK' },
+              ),
+          )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const result = await testIndexer.fetch({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         })
 
-        expect(result).toHaveProperty('cursor')
+        expect(result).toHaveProperty('rows')
         expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
       })
 
@@ -287,11 +361,11 @@ describe('create', () => {
           }),
         )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
 
         await expect(
           testIndexer.fetch({
-            query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+            query: 'select "from", "to" from transfer limit 1',
             signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           }),
         ).rejects.toThrow('Bad request')
@@ -308,11 +382,11 @@ describe('create', () => {
           }),
         )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
 
         await expect(
           testIndexer.fetch({
-            query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+            query: 'select "from", "to" from transfer limit 1',
             signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           }),
         ).rejects.toThrow('Not found')
@@ -329,7 +403,7 @@ describe('create', () => {
             }),
         )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const errors: Error[] = []
 
         testIndexer.on('error', (error) => {
@@ -338,7 +412,7 @@ describe('create', () => {
 
         await expect(
           testIndexer.fetch({
-            query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+            query: 'select "from", "to" from transfer limit 1',
             signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
             retryCount: 3,
           }),
@@ -359,11 +433,11 @@ describe('create', () => {
             }),
         )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
 
         await expect(
           testIndexer.fetch({
-            query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+            query: 'select "from", "to" from transfer limit 1',
             signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
             retryCount: 2,
           }),
@@ -383,11 +457,11 @@ describe('create', () => {
           })
         })
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
 
         await expect(
           testIndexer.fetch({
-            query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+            query: 'select "from", "to" from transfer limit 1',
             signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
             retryCount: 3,
           }),
@@ -415,8 +489,6 @@ describe('create', () => {
       }, 10000)
 
       test('behavior: emits error event for each retry attempt', async () => {
-        const originalFetch = globalThis.fetch
-
         const fetchSpy = vi
           .spyOn(globalThis, 'fetch')
           .mockImplementationOnce(
@@ -440,9 +512,20 @@ describe('create', () => {
                 statusText: 'Service Unavailable',
               }),
           )
-          .mockImplementation(async (input, init) => originalFetch(input, init))
+          .mockImplementation(
+            async () =>
+              new Response(
+                JSON.stringify({
+                  ok: true,
+                  columns: ['from', 'to'],
+                  rows: [['0x123', '0x456']],
+                  row_count: 1,
+                }),
+                { status: 200, statusText: 'OK' },
+              ),
+          )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const errors: Error[] = []
         const requests: Request[] = []
         const responses: Response[] = []
@@ -458,7 +541,7 @@ describe('create', () => {
         })
 
         await testIndexer.fetch({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         })
 
@@ -477,12 +560,12 @@ describe('create', () => {
         error.name = 'AbortError'
         const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(error)
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const controller = new AbortController()
 
         await expect(
           testIndexer.fetch({
-            query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+            query: 'select "from", "to" from transfer limit 1',
             signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
             signal: controller.signal,
           }),
@@ -501,11 +584,11 @@ describe('create', () => {
             }),
         )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
 
         await expect(
           testIndexer.fetch({
-            query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+            query: 'select "from", "to" from transfer limit 1',
             signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
             retryCount: 2,
           }),
@@ -518,16 +601,29 @@ describe('create', () => {
 
   describe('.on', () => {
     test('behavior: emits request event with full details', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: true,
+              columns: ['from', 'to'],
+              rows: [['0x123', '0x456']],
+              row_count: 1,
+            }),
+            { status: 200, statusText: 'OK' },
+          ),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const requests: Request[] = []
 
-      is.on('request', (request) => {
+      testIndexer.on('request', (request) => {
         requests.push(request)
       })
 
-      await is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+      await testIndexer.fetch({
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-        cursor: '8453-12345',
       })
 
       expect(requests).toHaveLength(1)
@@ -535,57 +631,75 @@ describe('create', () => {
 
       // Validate request properties
       expect(request).toBeInstanceOf(Request)
-      expect(request?.method).toBe('POST')
-      expect(request?.url).toBe('https://api.indexsupply.net/v2/query')
+      expect(request?.method).toBe('GET')
 
-      // Validate headers
-      expect(request?.headers.get('Content-Type')).toBe('application/json')
-
-      // Validate body
-      const body = await request?.text()
-      const parsedBody = JSON.parse(body || '[]')
-      expect(parsedBody).toHaveLength(1)
-      expect(parsedBody[0]).toMatchObject({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
-        signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-        cursor: '8453-12345',
-      })
+      // Validate URL has query params
+      const url = new URL(request!.url)
+      expect(url.pathname).toBe('/query')
+      expect(url.searchParams.get('sql')).toBe('select "from", "to" from transfer limit 1')
+      expect(url.searchParams.get('chainId')).toBe('42431')
+      expect(url.searchParams.get('signature')).toBe(
+        'Transfer(address indexed from, address indexed to, uint256 value)',
+      )
     })
 
-    test('behavior: emits request event without optional fields in body', async () => {
+    test('behavior: emits request event without optional fields', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: true,
+              columns: ['from', 'to'],
+              rows: [['0x123', '0x456']],
+              row_count: 1,
+            }),
+            { status: 200, statusText: 'OK' },
+          ),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const requests: Request[] = []
 
-      is.on('request', (request) => {
+      testIndexer.on('request', (request) => {
         requests.push(request)
       })
 
-      await is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+      await testIndexer.fetch({
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
       })
 
       expect(requests).toHaveLength(1)
       const request = requests[0]
 
-      const body = await request?.text()
-      const parsedBody = JSON.parse(body || '[]')
-      expect(parsedBody[0]).toEqual({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
-        signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-      })
-      // cursor should not be present when undefined
-      expect(parsedBody[0]).not.toHaveProperty('cursor')
+      const url = new URL(request!.url)
+      expect(url.searchParams.get('sql')).toBe('select "from", "to" from transfer limit 1')
+      expect(url.searchParams.get('chainId')).toBe('42431')
     })
 
     test('behavior: emits response event with full details', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: true,
+              columns: ['from', 'to'],
+              rows: [['0x123', '0x456']],
+              row_count: 1,
+            }),
+            { status: 200, statusText: 'OK' },
+          ),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const responses: Response[] = []
 
-      is.on('response', (response) => {
+      testIndexer.on('response', (response) => {
         responses.push(response)
       })
 
-      await is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+      await testIndexer.fetch({
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
       })
 
@@ -596,28 +710,33 @@ describe('create', () => {
       expect(response).toBeInstanceOf(Response)
       expect(response?.ok).toBe(true)
       expect(response?.status).toBe(200)
-      expect(response?.url).toBe('https://api.indexsupply.net/v2/query')
-      expect(response?.statusText).toBeTruthy()
 
       // Clone and validate response body
       const clone = response?.clone()
       const data = await clone?.json()
-      expect(Array.isArray(data)).toBe(true)
-      expect(data).toHaveLength(1)
-      expect(data[0]).toHaveProperty('cursor')
-      expect(data[0]).toHaveProperty('columns')
-      expect(data[0]).toHaveProperty('rows')
+      expect(data).toHaveProperty('ok', true)
+      expect(data).toHaveProperty('columns')
+      expect(data).toHaveProperty('rows')
     })
 
-    test('behavior: emits error event with IndexSupply.FetchRequestError', async () => {
+    test('behavior: emits error event with Tidx.FetchRequestError', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ message: 'Bad request' }), {
+            status: 400,
+            statusText: 'Bad Request',
+          }),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const errors: Error[] = []
 
-      is.on('error', (error) => {
+      testIndexer.on('error', (error) => {
         errors.push(error)
       })
 
       await expect(
-        is.fetch({
+        testIndexer.fetch({
           query: 'invalid sql query that will fail',
         }),
       ).rejects.toThrow()
@@ -626,7 +745,7 @@ describe('create', () => {
       const error = errors[0]
 
       expect(error).toBeInstanceOf(Error)
-      expect(error?.name).toBe('IndexSupply.FetchRequestError')
+      expect(error?.name).toBe('Tidx.FetchRequestError')
       expect(error?.message).toBeTruthy()
       expect(typeof error?.message).toBe('string')
 
@@ -635,15 +754,24 @@ describe('create', () => {
     })
 
     test('behavior: emits error event with parsed JSON message', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ message: 'Unknown table' }), {
+            status: 400,
+            statusText: 'Bad Request',
+          }),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const errors: Error[] = []
 
-      is.on('error', (error) => {
+      testIndexer.on('error', (error) => {
         errors.push(error)
       })
 
       await expect(
-        is.fetch({
-          query: 'select * from nonexistent_table where chain = 8453',
+        testIndexer.fetch({
+          query: 'select * from nonexistent_table',
           signatures: ['event Foo(uint256 bar)'],
         }),
       ).rejects.toThrow()
@@ -658,18 +786,32 @@ describe('create', () => {
     })
 
     test('behavior: emits request and response events in order', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: true,
+              columns: ['from', 'to'],
+              rows: [['0x123', '0x456']],
+              row_count: 1,
+            }),
+            { status: 200, statusText: 'OK' },
+          ),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const events: string[] = []
 
-      is.on('request', () => {
+      testIndexer.on('request', () => {
         events.push('request')
       })
 
-      is.on('response', () => {
+      testIndexer.on('response', () => {
         events.push('response')
       })
 
-      await is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+      await testIndexer.fetch({
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
       })
 
@@ -677,19 +819,33 @@ describe('create', () => {
     })
 
     test('behavior: multiple listeners on same event', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: true,
+              columns: ['from', 'to'],
+              rows: [['0x123', '0x456']],
+              row_count: 1,
+            }),
+            { status: 200, statusText: 'OK' },
+          ),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const listener1Calls: number[] = []
       const listener2Calls: number[] = []
 
-      is.on('request', () => {
+      testIndexer.on('request', () => {
         listener1Calls.push(1)
       })
 
-      is.on('request', () => {
+      testIndexer.on('request', () => {
         listener2Calls.push(2)
       })
 
-      await is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+      await testIndexer.fetch({
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
       })
 
@@ -698,13 +854,27 @@ describe('create', () => {
     })
 
     test('behavior: wildcard event is emitted for all events', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              ok: true,
+              columns: ['from', 'to'],
+              rows: [['0x123', '0x456']],
+              row_count: 1,
+            }),
+            { status: 200, statusText: 'OK' },
+          ),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const wildcardEvents: Array<{
         event: string
         data: unknown
         options: { id: string }
       }> = []
 
-      is.on('*', (event, data, options) => {
+      testIndexer.on('*', (event, data, options) => {
         wildcardEvents.push({
           event,
           data,
@@ -712,8 +882,8 @@ describe('create', () => {
         })
       })
 
-      await is.fetch({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+      await testIndexer.fetch({
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
       })
 
@@ -734,13 +904,22 @@ describe('create', () => {
     })
 
     test('behavior: wildcard event is emitted for error events', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ message: 'Bad request' }), {
+            status: 400,
+            statusText: 'Bad Request',
+          }),
+      )
+
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const wildcardEvents: Array<{
         event: string
         data: unknown
         options: { id: string }
       }> = []
 
-      is.on('*', (event, data, options) => {
+      testIndexer.on('*', (event, data, options) => {
         wildcardEvents.push({
           event,
           data,
@@ -749,7 +928,7 @@ describe('create', () => {
       })
 
       await expect(
-        is.fetch({
+        testIndexer.fetch({
           query: 'invalid sql query that will fail',
         }),
       ).rejects.toThrow()
@@ -769,14 +948,14 @@ describe('create', () => {
     test('behavior: streams Transfer events from Base chain', async () => {
       const controller = new AbortController()
       // biome-ignore lint/suspicious/noExplicitAny: _
-      const results: IS.IS.fetch.ReturnValue<any, any>[] = []
+      const results: Tidx.Tidx.fetch.ReturnValue<any, any>[] = []
 
       // Collect a few results then abort
       let count = 0
       const maxResults = 3
 
-      for await (const result of is.live({
-        query: 'select "from", "to", tokens from transfer where chain = 8453 limit 1',
+      for await (const result of tidx.live({
+        query: 'select "from", "to", tokens from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint tokens)'],
         signal: controller.signal,
       })) {
@@ -793,15 +972,12 @@ describe('create', () => {
       expect(results.length).toBeLessThanOrEqual(maxResults)
 
       for (const result of results) {
-        expect(result).toHaveProperty('cursor')
-        expect(result).toHaveProperty('columns')
         expect(result).toHaveProperty('rows')
-        expect(result.cursor).toMatch(/^8453-\d+$/)
       }
-    }) // Increase timeout for live query
+    }, 30_000)
 
     test('behavior: emits request and response events', async () => {
-      const testIndexer = IS.create()
+      const testIndexer = Tidx.create({ basicAuth: process.env.VITE_API_CREDENTIALS, chainId: 42431 })
       const controller = new AbortController()
       const events: string[] = []
 
@@ -814,7 +990,7 @@ describe('create', () => {
       })
 
       for await (const _result of testIndexer.live({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         signal: controller.signal,
       })) {
@@ -835,11 +1011,11 @@ describe('create', () => {
           }),
       )
 
-      const testIndexer = IS.create()
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const controller = new AbortController()
 
       const generator = testIndexer.live({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         signal: controller.signal,
       })
@@ -857,9 +1033,7 @@ describe('create', () => {
         const mockBody = new ReadableStream({
           start(controller) {
             const encoder = new TextEncoder()
-            const data = JSON.stringify([
-              { cursor: '8453-123', columns: [{ name: 'from', pgtype: 'text' }], rows: [] },
-            ])
+            const data = JSON.stringify({ ok: true, columns: ['from'], rows: [], row_count: 0 })
             controller.enqueue(encoder.encode(`data: ${data}\n\n`))
             controller.close()
           },
@@ -871,13 +1045,13 @@ describe('create', () => {
         })
       })
 
-      const testIndexer = IS.create()
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const controller = new AbortController()
       // biome-ignore lint/suspicious/noExplicitAny: _
-      const results: IS.IS.fetch.ReturnValue<any, any>[] = []
+      const results: Tidx.Tidx.fetch.ReturnValue<any, any>[] = []
 
       for await (const result of testIndexer.live({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         signal: controller.signal,
       })) {
@@ -885,7 +1059,7 @@ describe('create', () => {
       }
 
       expect(results.length).toBe(1)
-      expect(results[0]).toHaveProperty('cursor', '8453-123')
+      expect(results[0]).toHaveProperty('rows')
     })
 
     test('behavior: handles invalid JSON in SSE stream', async () => {
@@ -906,11 +1080,11 @@ describe('create', () => {
           }),
       )
 
-      const testIndexer = IS.create()
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const controller = new AbortController()
 
       const generator = testIndexer.live({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         signal: controller.signal,
       })
@@ -931,11 +1105,11 @@ describe('create', () => {
         return response
       })
 
-      const testIndexer = IS.create()
+      const testIndexer = Tidx.create({ chainId: 42431 })
       const controller = new AbortController()
 
       const generator = testIndexer.live({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+        query: 'select "from", "to" from transfer limit 1',
         signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
         signal: controller.signal,
       })
@@ -943,96 +1117,6 @@ describe('create', () => {
       await expect(generator.next()).rejects.toThrow('Response body is null')
 
       expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(1)
-    })
-
-    test('behavior: uses cursor and signatures parameters in live query', async () => {
-      const originalFetch = globalThis.fetch
-      const controller = new AbortController()
-
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-        const url = new URL((input as Request).url)
-        expect(url.searchParams.get('cursor')).toBe('8453-12345')
-        expect(url.searchParams.get('signatures')).toBe(
-          'event Transfer(address indexed from, address indexed to, uint256 value)',
-        )
-        return originalFetch(input as RequestInfo | URL)
-      })
-
-      const testIndexer = IS.create()
-
-      let resultCount = 0
-      for await (const _result of testIndexer.live({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
-        signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-        cursor: '8453-12345',
-        signal: controller.signal,
-      })) {
-        resultCount++
-        if (resultCount >= 1) {
-          controller.abort()
-          break
-        }
-      }
-
-      expect(fetchSpy).toHaveBeenCalled()
-    })
-
-    test('behavior: uses object-based cursor in live query', async () => {
-      const originalFetch = globalThis.fetch
-      const controller = new AbortController()
-
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-        const url = new URL((input as Request).url)
-        expect(url.searchParams.get('cursor')).toBe('8453-12345678')
-        return originalFetch(input as RequestInfo | URL)
-      })
-
-      const testIndexer = IS.create()
-
-      let resultCount = 0
-      for await (const _result of testIndexer.live({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
-        signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-        cursor: { chainId: 8453, blockNumber: 12345678 },
-        signal: controller.signal,
-      })) {
-        resultCount++
-        if (resultCount >= 1) {
-          controller.abort()
-          break
-        }
-      }
-
-      expect(fetchSpy).toHaveBeenCalled()
-    })
-
-    test('behavior: uses object-based cursor with bigint blockNumber in live query', async () => {
-      const originalFetch = globalThis.fetch
-      const controller = new AbortController()
-
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-        const url = new URL((input as Request).url)
-        expect(url.searchParams.get('cursor')).toBe('8453-12345678901234')
-        return originalFetch(input as RequestInfo | URL)
-      })
-
-      const testIndexer = IS.create()
-
-      let resultCount = 0
-      for await (const _result of testIndexer.live({
-        query: 'select "from", "to" from transfer where chain = 8453 limit 1',
-        signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-        cursor: { chainId: 8453, blockNumber: 12345678901234n },
-        signal: controller.signal,
-      })) {
-        resultCount++
-        if (resultCount >= 1) {
-          controller.abort()
-          break
-        }
-      }
-
-      expect(fetchSpy).toHaveBeenCalled()
     })
 
     describe('behavior: retries', () => {
@@ -1058,7 +1142,7 @@ describe('create', () => {
           )
           .mockImplementation(async (input, init) => originalFetch(input, init))
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ basicAuth: process.env.VITE_API_CREDENTIALS, chainId: 42431 })
         const errors: Error[] = []
 
         testIndexer.on('error', (error) => {
@@ -1067,11 +1151,11 @@ describe('create', () => {
 
         let resultCount = 0
         for await (const result of testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
         })) {
-          expect(result).toHaveProperty('cursor')
+          expect(result).toHaveProperty('rows')
           resultCount++
           if (resultCount >= 1) {
             controller.abort()
@@ -1083,7 +1167,7 @@ describe('create', () => {
         expect(errors.length).toBe(2)
         for (const error of errors) {
           expect(error).toBeInstanceOf(Error)
-          expect(error.name).toBe('IndexSupply.FetchRequestError')
+          expect(error.name).toBe('Tidx.FetchRequestError')
         }
       })
 
@@ -1102,15 +1186,15 @@ describe('create', () => {
           )
           .mockImplementation(async (input, init) => originalFetch(input, init))
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ basicAuth: process.env.VITE_API_CREDENTIALS, chainId: 42431 })
 
         let resultCount = 0
         for await (const result of testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
         })) {
-          expect(result).toHaveProperty('cursor')
+          expect(result).toHaveProperty('rows')
           resultCount++
           if (resultCount >= 1) {
             controller.abort()
@@ -1129,11 +1213,11 @@ describe('create', () => {
           }),
         )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const controller = new AbortController()
 
         const generator = testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
         })
@@ -1150,11 +1234,11 @@ describe('create', () => {
           }),
         )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const controller = new AbortController()
 
         const generator = testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
         })
@@ -1172,7 +1256,7 @@ describe('create', () => {
             }),
         )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const controller = new AbortController()
         const errors: Error[] = []
 
@@ -1181,7 +1265,7 @@ describe('create', () => {
         })
 
         const generator = testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
           retryCount: 3,
@@ -1202,11 +1286,11 @@ describe('create', () => {
             }),
         )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const controller = new AbortController()
 
         const generator = testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
           retryCount: 2,
@@ -1227,11 +1311,11 @@ describe('create', () => {
           })
         })
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const controller = new AbortController()
 
         const generator = testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
           retryCount: 3,
@@ -1287,7 +1371,7 @@ describe('create', () => {
           )
           .mockImplementation(async (input, init) => originalFetch(input, init))
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ basicAuth: process.env.VITE_API_CREDENTIALS, chainId: 42431 })
         const errors: Error[] = []
         const requests: Request[] = []
         const responses: Response[] = []
@@ -1304,7 +1388,7 @@ describe('create', () => {
 
         let resultCount = 0
         for await (const _result of testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
         })) {
@@ -1330,15 +1414,15 @@ describe('create', () => {
           .spyOn(globalThis, 'fetch')
           .mockImplementationOnce(async (input, init) => originalFetch(input, init))
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ basicAuth: process.env.VITE_API_CREDENTIALS, chainId: 42431 })
 
         let resultCount = 0
         for await (const result of testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
         })) {
-          expect(result).toHaveProperty('cursor')
+          expect(result).toHaveProperty('rows')
           resultCount++
           // Abort after first result
           controller.abort()
@@ -1367,11 +1451,11 @@ describe('create', () => {
           }),
         )
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const controller = new AbortController()
 
         const generator = testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
         })
@@ -1404,13 +1488,12 @@ describe('create', () => {
             const mockBody = new ReadableStream({
               start(ctrl) {
                 const encoder = new TextEncoder()
-                const successData = JSON.stringify([
-                  {
-                    cursor: '8453-12345',
-                    columns: [{ name: 'from' }, { name: 'to' }],
-                    rows: [['0x123', '0x456']],
-                  },
-                ])
+                const successData = JSON.stringify({
+                  ok: true,
+                  columns: ['from', 'to'],
+                  rows: [['0x123', '0x456']],
+                  row_count: 1,
+                })
                 ctrl.enqueue(encoder.encode(`data: ${successData}\n\n`))
                 ctrl.close()
               },
@@ -1421,7 +1504,7 @@ describe('create', () => {
             })
           })
 
-        const testIndexer = IS.create()
+        const testIndexer = Tidx.create({ chainId: 42431 })
         const errors: Error[] = []
 
         testIndexer.on('error', (error) => {
@@ -1430,11 +1513,11 @@ describe('create', () => {
 
         let resultCount = 0
         for await (const result of testIndexer.live({
-          query: 'select "from", "to" from transfer where chain = 8453 limit 1',
+          query: 'select "from", "to" from transfer limit 1',
           signatures: ['event Transfer(address indexed from, address indexed to, uint256 value)'],
           signal: controller.signal,
         })) {
-          expect(result).toHaveProperty('cursor')
+          expect(result).toHaveProperty('rows')
           resultCount++
           if (resultCount >= 1) {
             controller.abort()
@@ -1444,7 +1527,7 @@ describe('create', () => {
 
         expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
         expect(errors.length).toBe(1)
-        expect(errors[0]?.name).toBe('IndexSupply.SseError')
+        expect(errors[0]?.name).toBe('Tidx.SseError')
       })
     })
   })
