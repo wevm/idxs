@@ -93,7 +93,7 @@ describe('create', () => {
       expect(result).toHaveProperty('rows')
       expect(result.rows.length).toBe(1)
 
-      const row = result.rows[0]!
+      const row = result.rows[0] as (typeof result.rows)[number]
       expect(row).toHaveProperty('count')
       expect(row).toHaveProperty('max_block')
       expect(Number(row.count)).toBeGreaterThan(0)
@@ -142,7 +142,7 @@ describe('create', () => {
       })
 
       expect(requests).toHaveLength(1)
-      const url = new URL(requests[0]!.url)
+      const url = new URL(requests[0]?.url as string)
       expect(url.searchParams.get('engine')).toBe('clickhouse')
     })
 
@@ -172,7 +172,7 @@ describe('create', () => {
       })
 
       expect(requests).toHaveLength(1)
-      const url = new URL(requests[0]!.url)
+      const url = new URL(requests[0]?.url as string)
       expect(url.searchParams.has('engine')).toBe(false)
     })
 
@@ -635,7 +635,7 @@ describe('create', () => {
       expect(request?.method).toBe('GET')
 
       // Validate URL has query params
-      const url = new URL(request!.url)
+      const url = new URL(request?.url as string)
       expect(url.pathname).toBe('/query')
       expect(url.searchParams.get('sql')).toBe('select "from", "to" from transfer limit 1')
       expect(url.searchParams.get('chainId')).toBe('42431')
@@ -673,7 +673,7 @@ describe('create', () => {
       expect(requests).toHaveLength(1)
       const request = requests[0]
 
-      const url = new URL(request!.url)
+      const url = new URL(request?.url as string)
       expect(url.searchParams.get('sql')).toBe('select "from", "to" from transfer limit 1')
       expect(url.searchParams.get('chainId')).toBe('42431')
     })
