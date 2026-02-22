@@ -139,7 +139,7 @@ export declare namespace Tidx {
  *
  * @example
  * ```ts
- * import { Tidx } from 'tidx'
+ * import { Tidx } from 'tidx.ts'
  *
  * // Create with default options
  * const tidx = Tidx.create()

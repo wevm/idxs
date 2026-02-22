@@ -5,7 +5,7 @@ TypeScript Interface for [tidx](https://tidx.tempo.xyz).
 ## Install
 
 ```bash
-npm i tidx
+npm i tidx.ts
 ```
 
 ## Usage
@@ -15,7 +15,7 @@ npm i tidx
 Instantiate and use the `Tidx` client to fetch data from the tidx API.
 
 ```ts
-import { Tidx } from 'tidx'
+import { Tidx } from 'tidx.ts'
 
 const tidx = Tidx.create({ basicAuth: 'user:pass', chainId: 42431 })
 
@@ -45,7 +45,7 @@ for await (const result of tidx.live({
 `tidx` exports a [Kysely-based](https://kysely.dev) type-safe query builder.
 
 ```ts
-import { Tidx, QueryBuilder } from 'tidx'
+import { Tidx, QueryBuilder } from 'tidx.ts'
 
 const tidx = Tidx.create({ basicAuth: 'your-api-key', chainId: 42431 })
 const qb = QueryBuilder.from(tidx)

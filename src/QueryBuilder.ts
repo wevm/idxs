@@ -214,7 +214,7 @@ export type QueryBuilder<rootAbi extends Abi | undefined = undefined> = Kysely<
  *
  * @example
  * ```ts
- * import { Tidx, QueryBuilder } from 'tidx'
+ * import { Tidx, QueryBuilder } from 'tidx.ts'
  *
  * const tidx = Tidx.create({ basicAuth: 'your-api-key', chainId: 1 })
  * const qb = QueryBuilder.from(tidx)
