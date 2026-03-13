@@ -235,7 +235,7 @@ export declare namespace QueryBuilder {
  */
 export function from(options: from.Options): QueryBuilder {
   let cursor: QueryBuilder.Cursor | undefined
-  const signatures: string[] = []
+  let signatures: string[] = []
 
   function inner(
     o: {
@@ -244,12 +244,14 @@ export function from(options: from.Options): QueryBuilder {
     } = {},
   ) {
     cursor ??= o.cursor
-    signatures.push(...(o.signatures ?? []))
+    signatures = [...signatures, ...(o.signatures ?? [])]
+
+    const sigs = [...signatures]
 
     const kysely = new Kysely({
       dialect: {
         createAdapter: () => new PostgresAdapter(),
-        createDriver: () => new Driver({ ...options, cursor, signatures }),
+        createDriver: () => new Driver({ ...options, cursor, signatures: sigs }),
         createIntrospector: (db) => new PostgresIntrospector(db),
         createQueryCompiler: () => new PostgresQueryCompiler(),
       },
